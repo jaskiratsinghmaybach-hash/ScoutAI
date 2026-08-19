@@ -63,53 +63,51 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-6 py-16 sm:py-24">
-      <header className="mb-16">
-        <div className="font-mono text-xs uppercase tracking-widest text-amber-400/80">
-          ScoutAI — Field Dossier
+    <main className="mx-auto min-h-screen max-w-2xl px-6 py-16">
+      <header className="mb-10">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-success" />
+          <span className="font-mono text-xs uppercase tracking-wide text-foreground-muted">
+            ScoutAI
+          </span>
         </div>
-        <h1 className="mt-3 font-serif text-4xl italic text-neutral-50 sm:text-5xl">
-          Find the location before you find the flight.
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight">
+          Find the location before you find the flight
         </h1>
-        <p className="mt-4 max-w-xl text-neutral-400">
-          Describe your scene. An AI location scout researches real filming
-          locations — permits, past productions, costs, and weather —
-          using Gemini and Parallel Search.
+        <p className="mt-2 text-sm text-foreground-muted">
+          Describe your scene. An AI agent researches real filming locations —
+          permits, past productions, cost, and weather — using Gemini and Parallel Search.
         </p>
       </header>
 
-      <SceneBrief onSubmit={handleSubmit} isRunning={isRunning} />
+      <div className="space-y-6">
+        <SceneBrief onSubmit={handleSubmit} isRunning={isRunning} />
 
-      {(isRunning || steps.length > 0) && (
-        <div className="mt-10">
-          <AgentTrace steps={steps} />
-        </div>
-      )}
+        {(isRunning || steps.length > 0) && <AgentTrace steps={steps} />}
 
-      {error && (
-        <div className="mt-6 border border-red-900 bg-red-950/30 p-4 text-sm text-red-300">
-          {error}
-        </div>
-      )}
-
-      {packet && (
-        <div className="mt-12 space-y-8">
-          <div className="border-t border-neutral-800 pt-8">
-            <div className="font-mono text-xs uppercase tracking-widest text-neutral-500">
-              Scout&apos;s Note
-            </div>
-            <p className="mt-2 font-serif text-lg italic text-neutral-200">
-              {packet.agent_reasoning}
-            </p>
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+            {error}
           </div>
+        )}
 
+        {packet && (
           <div className="space-y-6">
-            {packet.locations.map((loc, i) => (
-              <LocationCard key={loc.id} location={loc} rank={i + 1} />
-            ))}
+            <div className="rounded-lg border border-border bg-surface p-4">
+              <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                Scout&apos;s note
+              </div>
+              <p className="mt-2 text-sm">{packet.agent_reasoning}</p>
+            </div>
+
+            <div className="space-y-4">
+              {packet.locations.map((loc, i) => (
+                <LocationCard key={loc.id} location={loc} rank={i + 1} />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

@@ -1,40 +1,69 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
+
+async function generateWithRetry(
+  model: ReturnType<typeof genAI.getGenerativeModel>,
+  prompt: string,
+  retries = 3
+): Promise<string> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      return result.response.text().trim();
+    } catch (err) {
+      const isLastAttempt = attempt === retries - 1;
+      const message = err instanceof Error ? err.message : String(err);
+      const isRetryable = message.includes("503") || message.includes("overloaded") || message.includes("high demand");
+
+      if (!isRetryable || isLastAttempt) throw err;
+
+      const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error("Failed after retries");
+}
+
+
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // Parallel Search API helper
 async function parallelSearch(query: string): Promise<string> {
   const apiKey = process.env.PARALLEL_API_KEY!;
-  const response = await fetch("https://api.parallel.ai/v1/search", {
+  const response = await fetch("https://api.parallel.ai/v1beta/search", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      "x-api-key": apiKey,
+      "parallel-beta": "search-extract-2025-10-10",
     },
-    body: JSON.stringify({ query, num_results: 5 }),
+    body: JSON.stringify({
+      objective: query,
+      search_queries: [query],
+      max_results: 5,
+    }),
   });
 
   if (!response.ok) {
-    console.error("Parallel search failed:", response.statusText);
+    const errorBody = await response.text();
+    console.error("Parallel search failed:", response.status, errorBody);
     return "Search unavailable.";
   }
 
   const data = await response.json();
-  // Parallel returns results array — flatten to text for Gemini context
-  const results = data.results ?? data.organic_results ?? [];
+  const results = data.results ?? [];
   return results
     .map(
-      (r: { title: string; snippet: string; url: string }) =>
-        `[${r.title}]: ${r.snippet} (${r.url})`
+      (r: { title?: string; url?: string; excerpts?: string[] }) =>
+        `[${r.title ?? "Untitled"}]: ${(r.excerpts ?? []).join(" ")} (${r.url ?? ""})`
     )
     .join("\n");
 }
-
 // Step 1: Generate search queries from scene description using Gemini
 async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
 
@@ -48,8 +77,7 @@ Special requirements: ${query.requirements.join(", ") || "none"}
 Return exactly 4 search queries as a JSON array. Focus on: real locations, permit offices, past film productions, and cost data.
 Only return the JSON array, nothing else. Example: ["query1", "query2", "query3", "query4"]`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
+  const text = await generateWithRetry(model, prompt);
 
   try {
     const cleaned = text.replace(/```json|```/g, "").trim();
@@ -77,12 +105,41 @@ async function runSearches(
   return results;
 }
 
+function normalizeLocations(raw: unknown): Location[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw.map((item, i) => {
+    const loc = item as Partial<Location>;
+    return {
+      id: loc.id ?? `location-${i}`,
+      name: loc.name ?? "Unknown location",
+      city: loc.city ?? "",
+      country: loc.country ?? "",
+      score: typeof loc.score === "number" ? loc.score : 0,
+      mood_match: loc.mood_match ?? "",
+      era_match: loc.era_match ?? "",
+      permit_info: loc.permit_info ?? "",
+      permit_url: loc.permit_url,
+      avg_daily_cost: loc.avg_daily_cost ?? "",
+      past_productions: Array.isArray(loc.past_productions)
+        ? loc.past_productions
+        : [],
+      weather_notes: loc.weather_notes ?? "",
+      logistics_notes: loc.logistics_notes ?? "",
+      search_sources: Array.isArray(loc.search_sources)
+        ? loc.search_sources
+        : [],
+      image_query: loc.image_query ?? `${loc.name ?? ""} ${loc.city ?? ""}`,
+    };
+  });
+}
+
 // Step 3: Gemini synthesizes research into structured location packets
 async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const searchContext = Object.entries(searchResults)
     .map(([q, r]) => `Query: ${q}\nResults:\n${r}`)
@@ -122,15 +179,15 @@ Return a JSON array of exactly 4 location objects. Each must include:
 
 Base your response on the actual search data. Only return the JSON array.`;
 
-  const result = await model.generateContent(prompt);
-  const text = result.response.text().trim();
+  const text = await generateWithRetry(model, prompt);
 
   try {
     const cleaned = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleaned);
-  } catch {
+    const parsed = JSON.parse(cleaned);
+    return normalizeLocations(parsed);
+} catch {
     return [];
-  }
+}
 }
 
 // Step 4: Generate agent reasoning summary
@@ -138,7 +195,7 @@ async function generateReasoning(
   query: SceneQuery,
   locations: Location[]
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `As a film location scout, write a brief 2-3 sentence professional reasoning note explaining why these locations were selected for the scene and what makes the top pick stand out.
 
@@ -148,8 +205,7 @@ Score: ${locations[0]?.score}/100
 
 Keep it concise, professional, and specific to the scene.`;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  return await generateWithRetry(model, prompt);
 }
 
 // Main agent orchestrator

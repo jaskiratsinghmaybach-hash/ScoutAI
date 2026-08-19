@@ -38,3 +38,29 @@ export interface AgentStep {
   detail: string;
   status: "pending" | "running" | "done" | "error";
 }
+export interface SlotState {
+  description: string;
+  mood: string;
+  era: string;
+  budget: string;
+  region: string;
+  duration: string;
+  requirements: string;
+}
+
+export interface ClarifyQuestion {
+  text: string;
+  type: "text" | "choice";
+  options?: string[];
+  slot: keyof SlotState;
+}
+
+export interface ClarifyResponse {
+  next_question: ClarifyQuestion | null;
+  updated_slots: Partial<SlotState>;
+}
+
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
