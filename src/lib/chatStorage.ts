@@ -1,10 +1,9 @@
-import type { SlotState, ConversationTurn, ScoutingPacket, AgentStep } from "@/types";
+import type { SlotState, ConversationTurn, ScoutRun } from "@/types";
 
 export interface StoredChatState {
     history: ConversationTurn[];
     slots: SlotState;
-    packet: ScoutingPacket | null;
-    steps: AgentStep[];
+    runs: ScoutRun[];
 }
 
 function storageKey(chatId: string) {

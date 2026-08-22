@@ -1,3 +1,11 @@
+export interface ScoutRun {
+  id: string;
+  steps: AgentStep[];
+  packet: ScoutingPacket | null;
+  triggerMessageIndex: number;
+  triggerMessageContent: string; // safety net: exact text of the triggering message
+}
+
 export interface SceneQuery {
   description: string;
   mood: string;

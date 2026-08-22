@@ -63,7 +63,7 @@ async function parallelSearch(query: string): Promise<string> {
 }
 // Step 1: Generate search queries from scene description using Gemini
 async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
-const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
 
@@ -139,7 +139,7 @@ async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
-const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const searchContext = Object.entries(searchResults)
     .map(([q, r]) => `Query: ${q}\nResults:\n${r}`)
@@ -185,9 +185,9 @@ Base your response on the actual search data. Only return the JSON array.`;
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
     return normalizeLocations(parsed);
-} catch {
+  } catch {
     return [];
-}
+  }
 }
 
 // Step 4: Generate agent reasoning summary
@@ -195,15 +195,23 @@ async function generateReasoning(
   query: SceneQuery,
   locations: Location[]
 ): Promise<string> {
-const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
-  const prompt = `As a film location scout, write a brief 2-3 sentence professional reasoning note explaining why these locations were selected for the scene and what makes the top pick stand out.
+  const prompt = `As a film location scout, summarize your findings for this scene in a tight, scannable format.
 
 Scene: ${query.description}
 Top location: ${locations[0]?.name}, ${locations[0]?.city}
 Score: ${locations[0]?.score}/100
 
-Keep it concise, professional, and specific to the scene.`;
+Return your response in this exact format, nothing else:
+
+[One short punchy sentence naming the top pick and why it wins]
+
+- [One-line highlight about cost/budget fit]
+- [One-line highlight about permits/logistics]
+- [One-line highlight about mood/era fit]
+
+Keep every line under 15 words. No fluff, no "I hope this helps," just the facts a busy filmmaker needs at a glance.`;
 
   return await generateWithRetry(model, prompt);
 }

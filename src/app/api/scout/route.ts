@@ -7,6 +7,10 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const query: SceneQuery = await req.json();
+  let clientAborted = false;
+  req.signal.addEventListener("abort", () => {
+    clientAborted = true;
+  });
 
   if (!query.description || query.description.trim().length < 10) {
     return new Response(
@@ -25,11 +29,14 @@ export async function POST(req: NextRequest) {
 
       try {
         const onStep = (step: AgentStep) => {
+          if (clientAborted) return;
           send({ type: "step", step });
         };
 
         const packet = await runScoutAgent(query, onStep);
-        send({ type: "complete", packet });
+        if (!clientAborted) {
+          send({ type: "complete", packet });
+        }
       } catch (err) {
         console.error("Agent pipeline error:", err);
         send({

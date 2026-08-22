@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import { getRandomSuggestions } from "@/data/suggestions";
 
 export function SuggestionPanel({ onSelect }: { onSelect: (text: string) => void }) {
-    const suggestions = useMemo(() => getRandomSuggestions(3), []);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+
+    useEffect(() => {
+        setSuggestions(getRandomSuggestions(3));
+    }, []);
 
     return (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-8">
