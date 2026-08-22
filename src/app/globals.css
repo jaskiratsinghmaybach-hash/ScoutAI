@@ -84,6 +84,7 @@
 
   --font-sans: var(--font-inter);
   --font-mono: var(--font-mono-display);
+  --font-display: var(--font-display);
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -142,11 +143,6 @@ body {
   height: 0;
 }
 
-textarea {
-  resize: none;
-  height: 8rem;
-  overflow: auto;
-}
 
 /* Disable text selection and image dragging app-wide */
 body {
@@ -178,4 +174,13 @@ textarea,
 textarea {
   resize: none;
   overflow-y: auto;
+}
+
+@keyframes shimmer-sweep {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 200%; }
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 2.5s ease-in-out infinite;
 }

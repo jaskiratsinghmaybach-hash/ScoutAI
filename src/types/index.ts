@@ -5,6 +5,7 @@ export interface SceneQuery {
   budget: "micro" | "indie" | "mid" | "studio";
   region: string;
   requirements: string[];
+  priorContext?: string; // summary of previous results + follow-up request
 }
 
 export interface Location {

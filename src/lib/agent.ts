@@ -63,7 +63,7 @@ async function parallelSearch(query: string): Promise<string> {
 }
 // Step 1: Generate search queries from scene description using Gemini
 async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
 
@@ -72,7 +72,7 @@ Mood: ${query.mood}
 Era/Period: ${query.era}
 Budget: ${query.budget}
 Region preference: ${query.region || "worldwide"}
-Special requirements: ${query.requirements.join(", ") || "none"}
+Special requirements: ${query.requirements?.join(", ") || "none"}${query.priorContext ? `\nPREVIOUS CONTEXT (this is a refinement of an earlier search):\n${query.priorContext}\n` : ""}
 
 Return exactly 4 search queries as a JSON array. Focus on: real locations, permit offices, past film productions, and cost data.
 Only return the JSON array, nothing else. Example: ["query1", "query2", "query3", "query4"]`;
@@ -139,7 +139,7 @@ async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const searchContext = Object.entries(searchResults)
     .map(([q, r]) => `Query: ${q}\nResults:\n${r}`)
@@ -153,22 +153,22 @@ Mood: ${query.mood}
 Era/Period: ${query.era}
 Budget: ${query.budget}
 Region: ${query.region || "worldwide"}
-Requirements: ${query.requirements.join(", ") || "none"}
+Requirements: ${query.requirements.join(", ") || "none"} ${query.priorContext ? `\nPREVIOUS CONTEXT (this is a refinement — take it into account, e.g. if user asked for cheaper options, prioritize lower-cost locations):\n${query.priorContext}\n` : ""}
 
 REAL SEARCH DATA:
 ${searchContext}
-
+CRITICAL: Only use URLs, facts, and figures that actually appear in the search data above. Never invent a plausible-looking URL, cost, or permit contact. If specific information wasn't found in the search results, say so honestly in that field (e.g. "No permit information found in search results") rather than fabricating a generic answer.
 Return a JSON array of exactly 4 location objects. Each must include:
 {
   "id": "unique-slug",
   "name": "Location Name",
   "city": "City",
   "country": "Country",
-  "score": 0-100,
+  "score": "An integer 0-100. Use the FULL range honestly — a location that's merely acceptable should score 40-60, a strong match 65-80, and only an exceptional, near-perfect match for ALL stated requirements (mood, era, budget, region, special requirements) should score above 85. Do not default to high scores out of politeness. If a location is missing key information from search results, that uncertainty should also lower its score.",
   "mood_match": "Explanation of mood fit",
   "era_match": "Explanation of era/period fit",
   "permit_info": "Real permit process details",
-  "permit_url": "URL to permit office if found",
+  "permit_url": "ONLY include this field if you found an actual URL in the search results above for this specific location's permit process. Copy the exact URL from the search data. If no real permit URL was found in the search results, OMIT this field entirely (do not invent or guess a URL).",
   "avg_daily_cost": "Estimated daily location fee",
   "past_productions": ["Film 1", "Film 2"],
   "weather_notes": "Best season, weather considerations",
@@ -176,7 +176,7 @@ Return a JSON array of exactly 4 location objects. Each must include:
   "search_sources": ["source url 1", "source url 2"],
   "image_query": "Specific search query to find a representative photo"
 }
-
+Before assigning scores, explicitly compare each location against every stated requirement (mood, era, budget fit, region, special requirements) and penalize mismatches or unknowns. Scores should genuinely differ across the 4 locations based on real fit differences — avoid clustering all scores in the 80s-90s range.
 Base your response on the actual search data. Only return the JSON array.`;
 
   const text = await generateWithRetry(model, prompt);
@@ -195,7 +195,7 @@ async function generateReasoning(
   query: SceneQuery,
   locations: Location[]
 ): Promise<string> {
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const prompt = `As a film location scout, write a brief 2-3 sentence professional reasoning note explaining why these locations were selected for the scene and what makes the top pick stand out.
 

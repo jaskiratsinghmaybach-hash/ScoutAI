@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ next_question: null, updated_slots: {} } satisfies ClarifyResponse);
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const conversationText = history
     .map((turn) => `${turn.role === "user" ? "User" : "ScoutAI"}: ${turn.content}`)
