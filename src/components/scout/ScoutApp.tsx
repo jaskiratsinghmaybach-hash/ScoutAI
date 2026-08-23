@@ -417,24 +417,42 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             );
                             const isLatestRun = run && run.id === runs[runs.length - 1]?.id;
 
-                            return (
-                                <div key={i} className="space-y-2">
-                                    {turn.role === "user" ? (
-                                        <UserMessage content={turn.content} />
-                                    ) : (
-                                        <div className="max-w-[90%] text-sm text-foreground-muted">{turn.content}</div>
-                                    )}
+                            if (!run) return null;
 
-                                    {run &&
-                                        (isLatestRun && (phase === "running" || phase === "thinking") && !run.packet ? (
-                                            <AgentTrace steps={run.steps} />
-                                        ) : (
-                                            <ActivityPill
-                                                run={run}
-                                                isActive={activeRunId === run.id}
-                                                onClick={() => setActiveRunId(run.id)}
-                                            />
-                                        ))}
+                            // Latest run while still in progress: show full live trace, no note yet.
+                            if (isLatestRun && (phase === "running" || phase === "thinking") && !run.packet) {
+                                return <AgentTrace key={run.id} steps={run.steps} />;
+                            }
+
+                            const isActive = activeRunId === run.id;
+
+                            return (
+                                <div key={run.id} className="space-y-2">
+                                    <ActivityPill run={run} isActive={isActive} onClick={() => setActiveRunId(run.id)} />
+
+                                    {isActive && run.packet && (
+                                        <div className="rounded-lg border border-border bg-surface p-3">
+                                            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                                                Scout&apos;s note
+                                            </div>
+                                            <div className="mt-1.5 space-y-1 text-xs">
+                                                {run.packet.agent_reasoning.split("\n").filter(Boolean).map((line: string, li: number) => {
+                                                    const trimmed = line.trim();
+                                                    const isBullet = trimmed.startsWith("-") || trimmed.startsWith("•");
+                                                    return isBullet ? (
+                                                        <div key={li} className="flex gap-1.5 text-foreground-muted">
+                                                            <span>•</span>
+                                                            <span>{trimmed.replace(/^[-•]\s*/, "")}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <p key={li} className="font-medium text-foreground">
+                                                            {trimmed}
+                                                        </p>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
@@ -449,37 +467,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         {error && (
                             <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">{error}</div>
                         )}
-
-                        {(() => {
-                            const active = runs.find((r) => r.id === activeRunId);
-                            if (!active?.packet) return null;
-                            return (
-                                <div className="rounded-lg border border-border bg-surface p-3">
-                                    <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
-                                        Scout&apos;s note
-                                    </div>
-                                    <div className="mt-1.5 space-y-1 text-xs">
-                                        {active.packet.agent_reasoning
-                                            .split("\n")
-                                            .filter(Boolean)
-                                            .map((line: string, i: number) => {
-                                                const trimmed = line.trim();
-                                                const isBullet = trimmed.startsWith("-") || trimmed.startsWith("•");
-                                                return isBullet ? (
-                                                    <div key={i} className="flex gap-1.5 text-foreground-muted">
-                                                        <span>•</span>
-                                                        <span>{trimmed.replace(/^[-•]\s*/, "")}</span>
-                                                    </div>
-                                                ) : (
-                                                    <p key={i} className="font-medium text-foreground">
-                                                        {trimmed}
-                                                    </p>
-                                                );
-                                            })}
-                                    </div>
-                                </div>
-                            );
-                        })()}
                     </div>
 
                     {/* ---- Input area: exactly one block renders at a time, and the
