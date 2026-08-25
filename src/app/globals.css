@@ -145,12 +145,6 @@ body {
 
 
 /* Disable text selection and image dragging app-wide */
-body {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
 
 img, svg, video, a {
   -webkit-user-drag: none;

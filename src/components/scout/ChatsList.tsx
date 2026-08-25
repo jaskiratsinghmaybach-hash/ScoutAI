@@ -11,6 +11,12 @@ import {
     type ChatSummary,
 } from "@/lib/chatStorage";
 import { ChatMenu } from "@/components/scout/ChatMenu";
+import { Check, Copy } from "lucide-react";
+
+type ShareDialogState = {
+    title: string;
+    url: string;
+};
 
 export function ChatsList({ onClose }: { onClose: () => void }) {
     const router = useRouter();
@@ -20,12 +26,17 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [infoChatId, setInfoChatId] = useState<string | null>(null);
     const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
-    const [shareToast, setShareToast] = useState<{ id: string; message: string } | null>(null);
+    const [shareDialog, setShareDialog] = useState<ShareDialogState | null>(null);
+    const [shareCopied, setShareCopied] = useState(false);
 
     const infoRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        setChats(listAllChats());
+        const loadTimer = window.setTimeout(() => {
+            setChats(listAllChats());
+        }, 0);
+
+        return () => window.clearTimeout(loadTimer);
     }, []);
 
     // Dismiss info popup on outside click
@@ -82,8 +93,8 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
     };
 
     // Handle share chat
-    const handleShare = async (chatId: string) => {
-        const stored = loadChatState(chatId);
+    const handleShare = (chat: ChatSummary) => {
+        const stored = loadChatState(chat.id);
         if (!stored) return;
 
         try {
@@ -94,13 +105,26 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
                 title: stored.title,
             };
             const compressed = compressToEncodedURIComponent(JSON.stringify(payload));
-            const shareUrl = `${window.location.origin}/share/${compressed}`;
-            await navigator.clipboard.writeText(shareUrl);
-
-            setShareToast({ id: chatId, message: "Link copied!" });
-            setTimeout(() => setShareToast(null), 2000);
+            const shareUrl = `${window.location.origin}/share#payload=${compressed}`;
+            setShareCopied(false);
+            setShareDialog({
+                title: chat.title,
+                url: shareUrl,
+            });
         } catch (err) {
             console.error("Failed to share chat:", err);
+        }
+    };
+
+    const handleCopyShareLink = async () => {
+        if (!shareDialog) return;
+
+        try {
+            await navigator.clipboard.writeText(shareDialog.url);
+            setShareCopied(true);
+            window.setTimeout(() => setShareCopied(false), 1500);
+        } catch (err) {
+            console.error("Failed to copy share link:", err);
         }
     };
 
@@ -200,7 +224,7 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
                                             );
                                         }}
                                         onDeleted={() => setConfirmDeleteId(chat.id)}
-                                        onShare={() => handleShare(chat.id)}
+                                        onShare={() => handleShare(chat)}
                                         onInfo={() =>
                                             setInfoChatId(infoChatId === chat.id ? null : chat.id)
                                         }
@@ -244,17 +268,78 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
                                     {rowError.message}
                                 </div>
                             )}
-
-                            {/* Inline Share Toast */}
-                            {shareToast && shareToast.id === chat.id && (
-                                <div className="px-4 text-xs text-success animate-fade-in">
-                                    {shareToast.message}
-                                </div>
-                            )}
                         </div>
                     );
                 })}
             </div>
+
+            {/* Share Modal */}
+            {shareDialog && (
+                <div
+                    onClick={() => setShareDialog(null)}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full max-w-sm rounded-lg border border-border bg-surface-raised p-6 shadow-2xl space-y-5"
+                    >
+                        <div className="space-y-2">
+                            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                                Share chat
+                            </div>
+                            <h3 className="truncate text-base font-semibold text-foreground">
+                                {shareDialog.title}
+                            </h3>
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-black/30 p-3.5">
+                            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                                Viewer access
+                            </div>
+                            <p className="mt-1.5 text-sm leading-relaxed text-neutral-300">
+                                Anyone with this link can view this shared ScoutAI chat and its
+                                scouting results.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                                Share link
+                            </label>
+                            <div className="flex h-11 items-center rounded-lg border border-border bg-surface px-3 focus-within:border-border-strong">
+                                <input
+                                    readOnly
+                                    value={shareDialog.url}
+                                    className="selectable min-w-0 flex-1 bg-transparent pr-3 text-sm text-neutral-300 outline-none"
+                                    onFocus={(e) => e.currentTarget.select()}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={handleCopyShareLink}
+                                    aria-label="Copy share link"
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+                                >
+                                    {shareCopied ? (
+                                        <Check className="h-4 w-4 text-success" />
+                                    ) : (
+                                        <Copy className="h-4 w-4" />
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setShareDialog(null)}
+                                className="rounded-full bg-neutral-800/60 px-4 py-1.5 text-sm text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Delete Confirmation Modal */}
             {confirmDeleteId && (
@@ -294,4 +379,4 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
             )}
         </div>
     );
-}
+}
