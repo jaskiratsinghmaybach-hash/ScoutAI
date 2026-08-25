@@ -37,7 +37,7 @@ export function QuestionCard({
             <button
               key={opt}
               onClick={() => onAnswer(opt)}
-              className="rounded-md border border-border px-3 py-2 text-sm text-foreground-muted transition-colors hover:border-foreground hover:text-foreground"
+              className="rounded-full bg-neutral-800/60 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
             >
               {opt}
             </button>
@@ -47,12 +47,12 @@ export function QuestionCard({
         <BorderGlow
           borderRadius={30}
           glowRadius={24}
-          glowIntensity={1}
+          glowIntensity={0.5}
           coneSpread={30}
           edgeSensitivity={25}
           backgroundColor="#0a0a0a"
-          colors={["#8B5CF6", "#3ECF6D", "#8B5CF6"]}
-          glowColor="265 80% 70%"
+          colors={["#ffffff", "#71717a", "#ffffff"]}
+          glowColor="0 0% 95%"
         >
           <form onSubmit={handleTextSubmit} className="flex items-center gap-2 p-1.5">
             <input

@@ -76,16 +76,16 @@ interface BorderGlowProps {
 export default function BorderGlow({
   children,
   className = "",
-  edgeSensitivity = 30,
-  glowColor = "265 80% 70%",
+  edgeSensitivity = 25,
+  glowColor = "0 0% 95%",
   backgroundColor = "#0a0a0a",
   borderRadius = 12,
-  glowRadius = 40,
-  glowIntensity = 1.0,
+  glowRadius = 30,
+  glowIntensity = 0.5,
   coneSpread = 25,
   animated = false,
-  colors = ["#8B5CF6", "#3ECF6D", "#8B5CF6"],
-  fillOpacity = 0.5,
+  colors = ["#ffffff", "#71717a", "#ffffff"],
+  fillOpacity = 0.4,
 }: BorderGlowProps) {
   const cardRef = useRef<HTMLDivElement>(null);
 

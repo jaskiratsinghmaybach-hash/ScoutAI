@@ -11,12 +11,12 @@ export function LocationCard({ location, rank }: { location: Location; rank: num
           <div className="font-mono text-xs text-foreground-muted">
             {String(rank).padStart(2, "0")}
           </div>
-          <h3 className="mt-1 text-lg font-semibold">{location.name}</h3>
-          <p className="text-sm text-foreground-muted">
+          <h3 className="mt-1 text-lg font-semibold leading-snug">{location.name}</h3>
+          <p className="mt-0.5 text-sm text-foreground-muted">
             {location.city}, {location.country}
           </p>
         </div>
-        <Badge variant={scoreBadgeVariant(location.score)} className="font-mono">
+        <Badge variant={scoreBadgeVariant(location.score)} className="font-mono shrink-0">
           {location.score}
         </Badge>
       </CardHeader>
@@ -27,25 +27,25 @@ export function LocationCard({ location, rank }: { location: Location; rank: num
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Mood fit
             </div>
-            <p className="mt-1 text-sm">{location.mood_match}</p>
+            <p className="mt-1 text-sm leading-relaxed">{location.mood_match}</p>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Era fit
             </div>
-            <p className="mt-1 text-sm">{location.era_match}</p>
+            <p className="mt-1 text-sm leading-relaxed">{location.era_match}</p>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Permit
             </div>
-            <p className="mt-1 text-sm">{location.permit_info}</p>
+            <p className="mt-1 text-sm leading-relaxed">{location.permit_info}</p>
             {location.permit_url && (
               <a
                 href={location.permit_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1 inline-block text-sm text-foreground underline underline-offset-2 hover:text-foreground-muted"
+                className="mt-1.5 inline-block text-sm text-foreground underline underline-offset-2 hover:text-foreground-muted"
               >
                 Permit office →
               </a>
@@ -55,7 +55,7 @@ export function LocationCard({ location, rank }: { location: Location; rank: num
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Est. daily cost
             </div>
-            <p className="mt-1 text-sm">{location.avg_daily_cost}</p>
+            <p className="mt-1 text-sm leading-relaxed">{location.avg_daily_cost}</p>
           </div>
         </div>
 
@@ -64,7 +64,7 @@ export function LocationCard({ location, rank }: { location: Location; rank: num
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Filmed here before
             </div>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {location.past_productions.map((p) => (
                 <Badge key={p} variant="outline">
                   {p}
@@ -79,13 +79,13 @@ export function LocationCard({ location, rank }: { location: Location; rank: num
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Weather
             </div>
-            <p className="mt-1 text-xs text-foreground-muted">{location.weather_notes}</p>
+            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">{location.weather_notes}</p>
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
               Logistics
             </div>
-            <p className="mt-1 text-xs text-foreground-muted">{location.logistics_notes}</p>
+            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">{location.logistics_notes}</p>
           </div>
         </div>
       </CardContent>

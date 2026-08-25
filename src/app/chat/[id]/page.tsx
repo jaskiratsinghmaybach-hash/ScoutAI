@@ -6,5 +6,5 @@ export default async function ChatPage({
     params: Promise<{ id: string }>;
 }) {
     const { id } = await params;
-    return <ScoutApp chatId={id} />;
+    return <ScoutApp key={id} chatId={id} />;
 }

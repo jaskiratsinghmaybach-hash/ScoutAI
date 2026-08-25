@@ -17,14 +17,15 @@ export function ActivityPill({
 
     return (
         <button
+            type="button"
             onClick={onClick}
-            className={`flex items-center gap-2 rounded-[30px] border px-3 py-1.5 text-xs transition-colors ${isActive
-                    ? "border-foreground/40 bg-surface-raised text-foreground"
-                    : "border-border text-foreground-muted hover:border-border-strong hover:text-foreground"
+            className={`group inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium backdrop-blur-sm transition-all duration-200 active:scale-95 ${isActive
+                    ? "bg-neutral-800 text-white shadow-sm ring-1 ring-white/20"
+                    : "bg-neutral-800/60 text-neutral-300 hover:bg-neutral-800 hover:text-white"
                 }`}
         >
             {isDone ? (
-                <CheckCircle2 className="h-3 w-3 text-success" />
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
             ) : (
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
             )}

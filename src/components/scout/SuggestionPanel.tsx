@@ -12,13 +12,13 @@ export function SuggestionPanel({ onSelect }: { onSelect: (text: string) => void
 
     return (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-8">
-            <p className="text-sm text-foreground-muted">Need inspiration? Try one of these:</p>
-            <div className="flex w-full max-w-md flex-col gap-2">
+            <p className="text-sm text-neutral-400">Need inspiration? Try one of these:</p>
+            <div className="flex w-full max-w-md flex-col gap-2.5">
                 {suggestions.map((s) => (
                     <button
                         key={s}
                         onClick={() => onSelect(s)}
-                        className="rounded-lg border border-border bg-surface px-4 py-3 text-left text-sm text-foreground-muted transition-colors hover:border-border-strong hover:text-foreground"
+                        className="group w-full rounded-full bg-neutral-800/60 px-5 py-3.5 text-left text-sm text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:scale-[1.02] hover:bg-neutral-800 hover:text-white active:scale-95"
                     >
                         {s}
                     </button>
