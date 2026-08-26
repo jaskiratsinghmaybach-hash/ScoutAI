@@ -6,19 +6,22 @@ import type { Location } from "@/types";
 export function LocationCard({ location, rank }: { location: Location; rank: number }) {
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between space-y-0">
-        <div>
-          <div className="font-mono text-xs text-foreground-muted">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="font-inter text-xs text-foreground-muted">
             {String(rank).padStart(2, "0")}
           </div>
-          <h3 className="mt-1 text-lg font-semibold leading-snug">{location.name}</h3>
-          <p className="mt-0.5 text-sm text-foreground-muted">
-            {location.city}, {location.country}
-          </p>
+          <Badge
+            variant={scoreBadgeVariant(location.score)}
+            className="font-inter shrink-0 h-7 w-7 rounded-full flex items-center justify-center p-0 text-xs"
+          >
+            {location.score}
+          </Badge>
         </div>
-        <Badge variant={scoreBadgeVariant(location.score)} className="font-mono shrink-0">
-          {location.score}
-        </Badge>
+        <h3 className="mt-1 text-lg font-semibold leading-snug">{location.name}</h3>
+        <p className="mt-0.5 text-sm text-foreground-muted">
+          {location.city}, {location.country}
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-4">

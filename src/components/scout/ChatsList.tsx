@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { compressToEncodedURIComponent } from "lz-string";
+import type { User } from "@supabase/supabase-js";
+import type { ActiveView } from "@/lib/useAuth";
 import {
     listAllChats,
     renameChatState,
@@ -10,6 +12,11 @@ import {
     loadChatState,
     type ChatSummary,
 } from "@/lib/chatStorage";
+import {
+    deleteAccountChat,
+    fetchAccountChatState,
+    upsertChat,
+} from "@/lib/continuitySync";
 import { ChatMenu } from "@/components/scout/ChatMenu";
 import { Check, Copy } from "lucide-react";
 
@@ -18,9 +25,31 @@ type ShareDialogState = {
     url: string;
 };
 
-export function ChatsList({ onClose }: { onClose: () => void }) {
+interface ChatsListProps {
+    onClose: () => void;
+    activeView: ActiveView;
+    user: User | null;
+    accountChats: ChatSummary[];
+    onRefreshAccountChats: () => Promise<void>;
+    onSignIn: () => void;
+    onSwitchToLocal: () => void;
+    currentChatId?: string;
+    onDeleteConfirmedOnCurrentChat?: (deletedChatId: string) => void;
+}
+
+export function ChatsList({
+    onClose,
+    activeView,
+    user,
+    accountChats,
+    onRefreshAccountChats,
+    onSignIn,
+    onSwitchToLocal,
+    currentChatId,
+    onDeleteConfirmedOnCurrentChat,
+}: ChatsListProps) {
     const router = useRouter();
-    const [chats, setChats] = useState<ChatSummary[]>([]);
+    const [localChats, setLocalChats] = useState<ChatSummary[]>([]);
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -33,7 +62,7 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
 
     useEffect(() => {
         const loadTimer = window.setTimeout(() => {
-            setChats(listAllChats());
+            setLocalChats(listAllChats());
         }, 0);
 
         return () => window.clearTimeout(loadTimer);
@@ -64,37 +93,78 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
         };
     }, [infoChatId]);
 
+    const chats = activeView === "local" ? localChats : accountChats;
+
     // Handle rename submit
-    const handleRenameSubmit = (chatId: string) => {
+    const handleRenameSubmit = async (chatId: string) => {
         if (renamingId !== chatId) return;
-        const res = renameChatState(chatId, renameValue);
-        if (res.ok) {
-            setChats((prev) =>
-                prev.map((c) => (c.id === chatId ? { ...c, title: renameValue.trim() } : c))
-            );
-            setRenamingId(null);
-        } else {
-            setRenamingId(null);
-            const msg =
-                res.retryAfterMs === 0
-                    ? "Name can't be empty"
-                    : `Try again in ${Math.ceil(res.retryAfterMs / 60000)}m`;
-            setRowError({ id: chatId, message: msg });
-            setTimeout(() => setRowError(null), 2000);
+        const trimmed = renameValue.trim();
+
+        if (activeView === "local") {
+            const res = renameChatState(chatId, trimmed);
+            if (res.ok) {
+                setLocalChats((prev) =>
+                    prev.map((c) => (c.id === chatId ? { ...c, title: trimmed } : c))
+                );
+                setRenamingId(null);
+            } else {
+                setRenamingId(null);
+                const msg =
+                    res.retryAfterMs === 0
+                        ? "Name can't be empty"
+                        : `Try again in ${Math.ceil(res.retryAfterMs / 60000)}m`;
+                setRowError({ id: chatId, message: msg });
+                setTimeout(() => setRowError(null), 2000);
+            }
+        } else if (activeView === "account" && user) {
+            if (!trimmed) {
+                setRenamingId(null);
+                setRowError({ id: chatId, message: "Name can't be empty" });
+                setTimeout(() => setRowError(null), 2000);
+                return;
+            }
+            try {
+                const state = await fetchAccountChatState(user.id, chatId);
+                if (state) {
+                    const updatedState = { ...state, title: trimmed, titleIsCustom: true, lastUpdated: Date.now() };
+                    await upsertChat(chatId, updatedState);
+                    await onRefreshAccountChats();
+                }
+                setRenamingId(null);
+            } catch (err) {
+                console.error("Account rename failed:", err);
+                setRenamingId(null);
+            }
         }
     };
 
-    // Handle delete confirmation
-    const handleConfirmDelete = () => {
+    // Handle delete confirmation (SCOPED TO ACTIVE VIEW)
+    const handleConfirmDelete = async () => {
         if (!confirmDeleteId) return;
-        deleteChatState(confirmDeleteId);
-        setChats((prev) => prev.filter((c) => c.id !== confirmDeleteId));
+
+        const targetId = confirmDeleteId;
         setConfirmDeleteId(null);
+
+        if (activeView === "local") {
+            deleteChatState(targetId);
+            setLocalChats((prev) => prev.filter((c) => c.id !== targetId));
+        } else if (activeView === "account" && user) {
+            await deleteAccountChat(user.id, targetId);
+            await onRefreshAccountChats();
+        }
+
+        // If deleted chat is currently open, navigate away
+        if (targetId === currentChatId && onDeleteConfirmedOnCurrentChat) {
+            onDeleteConfirmedOnCurrentChat(targetId);
+        }
     };
 
     // Handle share chat
-    const handleShare = (chat: ChatSummary) => {
-        const stored = loadChatState(chat.id);
+    const handleShare = async (chat: ChatSummary) => {
+        let stored = activeView === "local" ? loadChatState(chat.id) : null;
+        if (!stored && activeView === "account" && user) {
+            stored = await fetchAccountChatState(user.id, chat.id);
+        }
         if (!stored) return;
 
         try {
@@ -132,8 +202,13 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
         <div className="flex flex-1 flex-col overflow-y-auto px-6 py-6">
             <div className="mb-6 flex items-center justify-between px-1">
                 {/* Section Label */}
-                <span className="inline-flex items-center rounded-full bg-neutral-800/40 px-3 py-1 text-[14px] font-semibold tracking-wider text-neutral-400 backdrop-blur-sm">
-                    Your Chats
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-neutral-800/40 px-3 py-1 text-[13px] font-semibold tracking-wider text-neutral-300 backdrop-blur-sm border border-neutral-700/40">
+                    <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                            activeView === "account" ? "bg-amber-400" : "bg-emerald-400"
+                        }`}
+                    />
+                    {activeView === "account" ? "Account Chats" : "Local Chats"}
                 </span>
 
                 {/* Back Button */}
@@ -141,7 +216,6 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
                     onClick={onClose}
                     className="group inline-flex items-center gap-1 font-display rounded-full bg-neutral-800/60 px-3 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
                 >
-                    {/* Left Arrow Icon */}
                     <svg
                         className="h-3.5 w-3.5 text-neutral-400 transition-colors group-hover:text-white"
                         fill="none"
@@ -159,119 +233,160 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
                 </button>
             </div>
 
-            {chats.length === 0 && (
-                <p className="text-sm text-foreground-muted">No chats yet.</p>
-            )}
+            {/* Signed-out banner when viewing Account view */}
+            {activeView === "account" && !user ? (
+                <div className="rounded-xl border border-border bg-neutral-900/60 p-5 space-y-3">
+                    <p className="text-sm text-neutral-300 leading-relaxed">
+                        You're signed out. Sign in again to access your account chats, or switch to Local.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onClose();
+                                onSignIn();
+                            }}
+                            className="rounded-lg bg-white px-3.5 py-1.5 text-xs font-semibold text-neutral-900 hover:bg-zinc-100 transition-all active:scale-95"
+                        >
+                            Sign in
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onSwitchToLocal}
+                            className="rounded-lg border border-border bg-neutral-800 px-3.5 py-1.5 text-xs font-medium text-neutral-300 hover:text-white hover:bg-neutral-700 transition-all active:scale-95"
+                        >
+                            Switch to Local
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {chats.length === 0 && (
+                        <p className="text-sm text-foreground-muted">
+                            {activeView === "account" ? "No account chats yet." : "No local chats yet."}
+                        </p>
+                    )}
 
-            <div className="space-y-2">
-                {chats.map((chat) => {
-                    const isRenaming = renamingId === chat.id;
-                    const isInfoOpen = infoChatId === chat.id;
+                    <div className="space-y-2">
+                        {chats.map((chat) => {
+                            const isRenaming = renamingId === chat.id;
+                            const isInfoOpen = infoChatId === chat.id;
 
-                    return (
-                        <div key={chat.id} className="relative flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                                {/* Navigate to Chat / Title Area */}
-                                <div
-                                    onClick={() => {
-                                        if (!isRenaming) {
-                                            router.push(`/chat/${chat.id}`);
-                                        }
-                                    }}
-                                    className="group flex flex-1 min-w-0 items-center justify-between gap-3 rounded-full bg-neutral-800/60 px-4 py-3 text-left text-sm text-neutral-200 backdrop-blur-sm transition-all duration-200 hover:scale-[1.01] hover:bg-neutral-800 hover:text-white active:scale-95 cursor-pointer"
-                                >
-                                    {isRenaming ? (
-                                        <input
-                                            autoFocus
-                                            value={renameValue}
-                                            onChange={(e) => setRenameValue(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === "Enter") {
-                                                    handleRenameSubmit(chat.id);
-                                                } else if (e.key === "Escape") {
-                                                    setRenamingId(null);
+                            return (
+                                <div key={chat.id} className="relative flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                        {/* Navigate to Chat / Title Area */}
+                                        <div
+                                            onClick={() => {
+                                                if (!isRenaming) {
+                                                    onClose();
+                                                    router.push(`/chat/${chat.id}`);
                                                 }
                                             }}
-                                            onBlur={() => handleRenameSubmit(chat.id)}
+                                            className="group flex flex-1 min-w-0 items-center justify-between gap-3 rounded-full bg-neutral-800/60 px-4 py-3 text-left text-sm text-neutral-200 backdrop-blur-sm transition-all duration-200 hover:scale-[1.01] hover:bg-neutral-800 hover:text-white active:scale-95 cursor-pointer"
+                                        >
+                                            {isRenaming ? (
+                                                <input
+                                                    autoFocus
+                                                    value={renameValue}
+                                                    onChange={(e) => setRenameValue(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === "Enter") {
+                                                            handleRenameSubmit(chat.id);
+                                                        } else if (e.key === "Escape") {
+                                                            setRenamingId(null);
+                                                        }
+                                                    }}
+                                                    onBlur={() => handleRenameSubmit(chat.id)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="w-full bg-transparent font-medium text-white border-b border-border-strong focus:outline-none text-sm"
+                                                />
+                                            ) : (
+                                                <div className="truncate font-medium">{chat.title}</div>
+                                            )}
+
+                                            {chat.lastUpdated ? (
+                                                <div className="shrink-0 text-xs text-neutral-400 group-hover:text-neutral-300">
+                                                    {new Date(chat.lastUpdated).toLocaleDateString()}
+                                                </div>
+                                            ) : null}
+                                        </div>
+
+                                        {/* Per-chat ⋮ Menu */}
+                                        <div className="shrink-0">
+                                            <ChatMenu
+                                                chatId={chat.id}
+                                                currentTitle={chat.title}
+                                                onStartRename={() => {
+                                                    setRenamingId(chat.id);
+                                                    setRenameValue(chat.title);
+                                                }}
+                                                onRenamed={(newTitle) => {
+                                                    if (activeView === "local") {
+                                                        setLocalChats((prev) =>
+                                                            prev.map((c) =>
+                                                                c.id === chat.id ? { ...c, title: newTitle } : c
+                                                            )
+                                                        );
+                                                    }
+                                                }}
+                                                onDeleted={() => setConfirmDeleteId(chat.id)}
+                                                onShare={() => handleShare(chat)}
+                                                onInfo={() =>
+                                                    setInfoChatId(infoChatId === chat.id ? null : chat.id)
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Floating Info Box */}
+                                    {isInfoOpen && (
+                                        <div
+                                            ref={infoRef}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-full bg-transparent font-medium text-white border-b border-border-strong focus:outline-none text-sm"
-                                        />
-                                    ) : (
-                                        <div className="truncate font-medium">{chat.title}</div>
+                                            className="absolute right-0 top-full mt-1 z-40 w-64 rounded-lg border border-border bg-surface-raised p-3.5 shadow-xl text-xs space-y-1.5"
+                                        >
+                                            <div className="font-semibold text-neutral-200 truncate">
+                                                {chat.title}
+                                            </div>
+                                            <div className="text-foreground-muted">
+                                                Storage:{" "}
+                                                <span className="text-amber-400 font-medium capitalize">
+                                                    {activeView}
+                                                </span>
+                                            </div>
+                                            <div className="text-foreground-muted">
+                                                Last updated:{" "}
+                                                <span className="text-neutral-300">
+                                                    {chat.lastUpdated
+                                                        ? new Date(chat.lastUpdated).toLocaleString()
+                                                        : "Unknown"}
+                                                </span>
+                                            </div>
+                                            <div className="pt-1 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setInfoChatId(null)}
+                                                    className="text-xs text-neutral-400 hover:text-white"
+                                                >
+                                                    Close
+                                                </button>
+                                            </div>
+                                        </div>
                                     )}
 
-                                    {chat.lastUpdated ? (
-                                        <div className="shrink-0 text-xs text-neutral-400 group-hover:text-neutral-300">
-                                            {new Date(chat.lastUpdated).toLocaleDateString()}
+                                    {/* Inline Error Message */}
+                                    {rowError && rowError.id === chat.id && (
+                                        <div className="px-4 text-xs text-danger animate-fade-in">
+                                            {rowError.message}
                                         </div>
-                                    ) : null}
+                                    )}
                                 </div>
-
-                                {/* Per-chat ⋮ Menu */}
-                                <div className="shrink-0">
-                                    <ChatMenu
-                                        chatId={chat.id}
-                                        currentTitle={chat.title}
-                                        onStartRename={() => {
-                                            setRenamingId(chat.id);
-                                            setRenameValue(chat.title);
-                                        }}
-                                        onRenamed={(newTitle) => {
-                                            setChats((prev) =>
-                                                prev.map((c) =>
-                                                    c.id === chat.id ? { ...c, title: newTitle } : c
-                                                )
-                                            );
-                                        }}
-                                        onDeleted={() => setConfirmDeleteId(chat.id)}
-                                        onShare={() => handleShare(chat)}
-                                        onInfo={() =>
-                                            setInfoChatId(infoChatId === chat.id ? null : chat.id)
-                                        }
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Floating Info Box */}
-                            {isInfoOpen && (
-                                <div
-                                    ref={infoRef}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 top-full mt-1 z-40 w-64 rounded-lg border border-border bg-surface-raised p-3.5 shadow-xl text-xs space-y-1.5"
-                                >
-                                    <div className="font-semibold text-neutral-200 truncate">
-                                        {chat.title}
-                                    </div>
-                                    <div className="text-foreground-muted">
-                                        Last updated:{" "}
-                                        <span className="text-neutral-300">
-                                            {chat.lastUpdated
-                                                ? new Date(chat.lastUpdated).toLocaleString()
-                                                : "Unknown"}
-                                        </span>
-                                    </div>
-                                    <div className="pt-1 flex justify-end">
-                                        <button
-                                            type="button"
-                                            onClick={() => setInfoChatId(null)}
-                                            className="text-xs text-neutral-400 hover:text-white"
-                                        >
-                                            Close
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Inline Error Message */}
-                            {rowError && rowError.id === chat.id && (
-                                <div className="px-4 text-xs text-danger animate-fade-in">
-                                    {rowError.message}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
 
             {/* Share Modal */}
             {shareDialog && (
@@ -352,11 +467,12 @@ export function ChatsList({ onClose }: { onClose: () => void }) {
                         className="w-full max-w-sm rounded-lg border border-border bg-surface-raised p-6 shadow-2xl space-y-4"
                     >
                         <h3 className="text-base font-semibold text-foreground">
-                            Delete this chat?
+                            Delete from {activeView === "account" ? "Account" : "Local"}?
                         </h3>
                         <p className="text-sm text-foreground-muted leading-relaxed">
-                            This action cannot be undone. All messages and scouting results will be
-                            permanently removed.
+                            {activeView === "account"
+                                ? "This chat will be removed from your cloud account. Local copy (if any) will remain untouched."
+                                : "This chat will be removed from this browser. Cloud account copy (if any) will remain untouched."}
                         </p>
                         <div className="flex items-center justify-end gap-2 pt-2">
                             <button

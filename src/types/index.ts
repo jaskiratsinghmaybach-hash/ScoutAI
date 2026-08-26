@@ -64,7 +64,17 @@ export interface ClarifyQuestion {
   slot: keyof SlotState;
 }
 
+export type ClarifyMessageType =
+  | "greeting"
+  | "small_talk"
+  | "vague"
+  | "off_topic"
+  | "scene_brief"
+  | "clarifying_answer";
+
 export interface ClarifyResponse {
+  message_type?: ClarifyMessageType;
+  chat_reply?: string;
   next_question: ClarifyQuestion | null;
   updated_slots: Partial<SlotState>;
 }

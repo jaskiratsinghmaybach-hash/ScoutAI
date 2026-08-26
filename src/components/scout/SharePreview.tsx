@@ -46,12 +46,17 @@ export function SharePreview({ encodedFromPath }: { encodedFromPath?: string }) 
     const [encodedFromHash, setEncodedFromHash] = useState<string | null>(null);
 
     useEffect(() => {
-        setEncodedFromHash(getHashPayload());
+        const hashTimer = window.setTimeout(() => {
+            setEncodedFromHash(getHashPayload());
+        }, 0);
 
         const handleHashChange = () => setEncodedFromHash(getHashPayload());
         window.addEventListener("hashchange", handleHashChange);
 
-        return () => window.removeEventListener("hashchange", handleHashChange);
+        return () => {
+            window.clearTimeout(hashTimer);
+            window.removeEventListener("hashchange", handleHashChange);
+        };
     }, []);
 
     const state = useMemo(

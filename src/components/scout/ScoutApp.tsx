@@ -6,7 +6,7 @@ import Image from "next/image";
 import { compressToEncodedURIComponent } from "lz-string";
 import { SuggestionPanel } from "@/components/scout/SuggestionPanel";
 import { Button } from "@/components/ui/button";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Check, Copy } from "lucide-react";
 import BorderGlow from "@/components/scout/BorderGlow";
 import { QuestionCard } from "@/components/scout/QuestionCard";
 import { AgentTrace } from "@/components/scout/AgentTrace";
@@ -18,12 +18,16 @@ import { UserMessage } from "@/components/scout/UserMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
 import { useTypewriter } from "@/lib/useTypewriter";
 import { AppHeader } from "@/components/scout/AppHeader";
+import { ContinuityModal } from "@/components/scout/ContinuityModal";
 import { getRandomSuggestions } from "@/data/suggestions";
 import {
   saveChatState,
   loadChatState,
+  listAllChats,
   generateChatId,
 } from "@/lib/chatStorage";
+import { upsertChat, fetchAccountChatState } from "@/lib/continuitySync";
+import { useAuth } from "@/lib/useAuth";
 import type {
   SlotState,
   ClarifyQuestion,
@@ -65,6 +69,40 @@ const GLOW_PROPS = {
 
 export function ScoutApp({ chatId }: { chatId?: string }) {
   const router = useRouter();
+  const {
+    user,
+    syncStatus,
+    activeView,
+    setActiveView,
+    accountChats,
+    refreshAccountChats,
+    profile,
+    refreshProfile,
+    isGlowing,
+    isDropdownOpen,
+    setIsDropdownOpen,
+    signInWithGoogle,
+    signOut,
+    reportWrite,
+  } = useAuth();
+
+  useEffect(() => {
+    if (isDropdownOpen) {
+      setShowContinuityModal(true);
+    }
+  }, [isDropdownOpen]);
+
+  const handleDeleteConfirmedOnCurrentChat = (deletedId: string) => {
+    if (chatId && chatId === deletedId) {
+      router.push("/");
+      setHistory([]);
+      setSlots(EMPTY_SLOTS);
+      setRuns([]);
+      setActiveRunId(null);
+      setTitle(undefined);
+      setPhase("intro");
+    }
+  };
   const [phase, setPhase] = useState<Phase>("intro");
   const [introText, setIntroText] = useState("");
   const [userHasEdited, setUserHasEdited] = useState(false);
@@ -74,7 +112,12 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const [currentQuestion, setCurrentQuestion] =
     useState<ClarifyQuestion | null>(null);
   const [showChatsList, setShowChatsList] = useState(false);
+  const [showContinuityModal, setShowContinuityModal] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [shareDialog, setShareDialog] = useState<{
+    title: string;
+    url: string;
+  } | null>(null);
 
   const [runs, setRuns] = useState<ScoutRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -109,13 +152,29 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const hasStarted = phase !== "intro";
   const hydratedRef = useRef(false);
 
-  // Hydrate from localStorage if we're on a /chat/[id] route
+  // Hydrate chat state when chatId, activeView, or user changes
   useEffect(() => {
     if (!chatId) return;
+    const targetId = chatId;
+    let isCancelled = false;
 
-    const hydrationTimer = window.setTimeout(() => {
-      const stored = loadChatState(chatId);
+    async function loadState(id: string) {
+      let stored: ReturnType<typeof loadChatState> = null;
+
+      if (activeView === "account") {
+        if (user) {
+          stored = await fetchAccountChatState(user.id, id);
+        } else {
+          stored = null;
+        }
+      } else {
+        // activeView === "local": existing localStorage loader untouched
+        stored = loadChatState(id);
+      }
+
+      if (isCancelled) return;
       hydratedRef.current = true;
+
       if (!stored || !stored.history || stored.history.length === 0) {
         setHistory([]);
         setSlots(EMPTY_SLOTS);
@@ -135,7 +194,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       setRuns(stored.runs ?? []);
       setTitle(
         stored.title ??
-          stored.history.find((h) => h.role === "user")?.content.slice(0, 40),
+        stored.history.find((h) => h.role === "user")?.content.slice(0, 40),
       );
       setActiveRunId(
         stored.runs?.length ? stored.runs[stored.runs.length - 1].id : null,
@@ -151,11 +210,15 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       } else if (stored.history.length > 0) {
         setPhase("clarifying");
       }
-    }, 0);
+    }
 
-    return () => window.clearTimeout(hydrationTimer);
+    loadState(targetId);
+
+    return () => {
+      isCancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatId, activeView, user]);
 
   function handleInitialSubmit(textToSubmit?: string) {
     const message = (textToSubmit || followUpText || introText).trim();
@@ -174,7 +237,16 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   useEffect(() => {
     if (!chatId || !hydratedRef.current || history.length === 0) return;
     saveChatState(chatId, { history, slots, runs, title });
-  }, [chatId, history, slots, runs, title]);
+    // Continuity: additive dual-write to Supabase, only when signed in.
+    // Fire-and-forget — never blocks the local experience.
+    if (user) {
+      const saved = loadChatState(chatId);
+      if (saved) {
+        reportWrite(upsertChat(chatId, saved));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, history, slots, runs, title, user]);
 
   async function askForNextQuestion(
     updatedHistory: ConversationTurn[],
@@ -209,12 +281,30 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       const mergedSlots = { ...updatedSlots, ...data.updated_slots };
       setSlots(mergedSlots);
 
+      const isChatOnly =
+        (data.message_type === "greeting" ||
+          data.message_type === "small_talk" ||
+          data.message_type === "off_topic") &&
+        !data.next_question;
+
       if (data.next_question) {
         setCurrentQuestion(data.next_question);
         setHistory([
           ...updatedHistory,
           { role: "assistant", content: data.next_question.text },
         ]);
+        setPhase("clarifying");
+      } else if (isChatOnly) {
+        // Small talk / greeting: reply in character and go back to
+        // waiting for the next message — never launch the scout pipeline.
+        setHistory([
+          ...updatedHistory,
+          {
+            role: "assistant",
+            content: data.chat_reply || "Hey! What scene are you scouting?",
+          },
+        ]);
+        setCurrentQuestion(null);
         setPhase("clarifying");
       } else {
         dispatchScout(mergedSlots, undefined, updatedHistory);
@@ -251,12 +341,22 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
     if (!chatId) {
       const newId = generateChatId();
-      saveChatState(newId, {
+      const newState = {
         history: newHistory,
         slots: newSlots,
-        runs: [],
+        runs: [] as ScoutRun[],
         title: initialTitle,
-      });
+      };
+      saveChatState(newId, newState);
+      // Continuity: dual-write the very first save for a new chat
+      if (user) {
+        const saved = loadChatState(newId);
+        if (saved) {
+          upsertChat(newId, saved).catch((err) =>
+            console.error("[Continuity] Initial chat upsert failed:", err)
+          );
+        }
+      }
       router.push(`/chat/${newId}`);
       return;
     }
@@ -267,7 +367,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     askForNextQuestion(newHistory, newSlots);
   }
 
-  const handleShareCurrentChat = async () => {
+  const handleShareCurrentChat = () => {
     const payload = {
       history,
       slots,
@@ -278,10 +378,24 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
     try {
       const compressed = compressToEncodedURIComponent(JSON.stringify(payload));
-      const shareUrl = `${window.location.origin}/share/${compressed}`;
-      await navigator.clipboard.writeText(shareUrl);
+      const shareUrl = `${window.location.origin}/share#payload=${compressed}`;
+      setShareCopied(false);
+      setShareDialog({
+        title: title ?? "Untitled chat",
+        url: shareUrl,
+      });
+    } catch (err) {
+      console.error("Failed to share chat:", err);
+    }
+  };
+
+  const handleCopyCurrentShareLink = async () => {
+    if (!shareDialog) return;
+
+    try {
+      await navigator.clipboard.writeText(shareDialog.url);
       setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 1500);
+      window.setTimeout(() => setShareCopied(false), 1500);
     } catch (err) {
       console.error("Failed to copy share link:", err);
     }
@@ -314,16 +428,18 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   function handleAnswer(answer: string) {
     if (!currentQuestion) return;
-    const updatedSlots = { ...slots, [currentQuestion.slot]: answer };
+    // Don't pre-assign the answer to currentQuestion.slot client-side —
+    // a vague-branch answer (a suggestion card) may not actually be
+    // answering that slot at all. Let the model re-read the conversation
+    // and extract into the correct slot(s) itself, same as free text.
     const updatedHistory: ConversationTurn[] = [
       ...history,
       { role: "user", content: answer },
     ];
     setHistory(updatedHistory);
-    setSlots(updatedSlots);
     setCurrentQuestion(null);
     setSuggestionPrefill(undefined);
-    askForNextQuestion(updatedHistory, updatedSlots);
+    askForNextQuestion(updatedHistory, slots);
   }
 
   function handleSkipAll() {
@@ -448,8 +564,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
               // Generate AI title only on the FIRST completed run, and only if not already custom-renamed
               if (isFirstRun) {
-    generateChatTitle(finalSlots, activeHistory);
-}
+                generateChatTitle(finalSlots, activeHistory);
+              }
             } else if (event.type === "error") {
               setError(event.error);
               setPhase("clarifying");
@@ -479,7 +595,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       abortControllerRef.current.abort();
     }
     if (streamReaderRef.current) {
-      streamReaderRef.current.cancel().catch(() => {});
+      streamReaderRef.current.cancel().catch(() => { });
     }
     setPhase("stopped");
   }
@@ -528,6 +644,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     });
   }
 
+  const googleAvatar = user?.user_metadata?.avatar_url as string | undefined;
+  const googleName = user?.user_metadata?.full_name as string | undefined;
+  const headerAvatarUrl = profile?.avatar_url ?? googleAvatar;
+  const headerDisplayName =
+    profile?.display_name ?? googleName ?? user?.email ?? "Account";
+  const headerInitial = headerDisplayName.charAt(0).toUpperCase();
+
   // ---------- INTRO / LANDING VIEW ----------
   if (!hasStarted && history.length === 0) {
     return (
@@ -556,6 +679,86 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
           </button>
         </div>
 
+        {/* Upper Right: Continuity Button */}
+        <div className="absolute right-6 top-6 z-20">
+          <button
+            type="button"
+            id="continuity-btn-landing"
+            onClick={() => setShowContinuityModal(true)}
+            className={`relative flex items-center justify-center rounded-full backdrop-blur-sm transition-all duration-200 active:scale-95 ${
+              user
+                ? "h-8 w-8"
+                : "px-3 py-1.5 text-xs font-medium bg-neutral-800/60 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+            } ${
+              isGlowing
+                ? "ring-2 ring-amber-400/90 shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse"
+                : user
+                ? "ring-1 ring-border hover:ring-border-strong"
+                : ""
+            }`}
+          >
+            {user ? (
+              <>
+                {headerAvatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={headerAvatarUrl}
+                    alt={headerDisplayName}
+                    className="h-full w-full rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white">
+                    {headerInitial}
+                  </div>
+                )}
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
+                    syncStatus === "synced"
+                      ? "bg-emerald-400"
+                      : syncStatus === "syncing"
+                      ? "bg-amber-400 animate-pulse"
+                      : syncStatus === "pending"
+                      ? "bg-orange-400"
+                      : "bg-neutral-500"
+                  }`}
+                />
+              </>
+            ) : (
+              "Continuity"
+            )}
+          </button>
+        </div>
+
+        {/* Continuity Modal (landing view) */}
+        {showContinuityModal && (
+          <ContinuityModal
+            onClose={() => {
+              setShowContinuityModal(false);
+              setIsDropdownOpen(false);
+            }}
+            user={user}
+            syncStatus={syncStatus}
+            activeView={activeView}
+            onSelectView={(v) => setActiveView(v)}
+            localChatCount={listAllChats().length}
+            accountChatCount={accountChats.length}
+            onSignIn={() => {
+              setShowContinuityModal(false);
+              setIsDropdownOpen(false);
+              signInWithGoogle();
+            }}
+            onSignOut={() => {
+              setShowContinuityModal(false);
+              setIsDropdownOpen(false);
+              signOut();
+            }}
+            onRefreshAccountChats={refreshAccountChats}
+            onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
+            profile={profile}
+            onRefreshProfile={refreshProfile}
+          />
+        )}
+
         {/* Left Sliding Drawer for Chats */}
         {showChatsList && (
           <div className="fixed inset-0 z-50 flex">
@@ -566,7 +769,20 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             />
             {/* Drawer content */}
             <div className="relative z-10 flex h-full w-full max-w-sm flex-col border-r border-border bg-surface-raised shadow-2xl">
-              <ChatsList onClose={() => setShowChatsList(false)} />
+              <ChatsList
+                onClose={() => setShowChatsList(false)}
+                activeView={activeView}
+                user={user}
+                accountChats={accountChats}
+                onRefreshAccountChats={refreshAccountChats}
+                onSignIn={() => {
+                  setShowChatsList(false);
+                  signInWithGoogle();
+                }}
+                onSwitchToLocal={() => setActiveView("local")}
+                currentChatId={chatId}
+                onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
+              />
             </div>
           </div>
         )}
@@ -623,14 +839,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   userHasEdited ? "Describe the scene you're scouting..." : ""
                 }
                 autoFocus
-                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none ${
-                  (userHasEdited
-                    ? introText
-                    : introText || typewriter.displayText) ||
+                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none ${(userHasEdited
+                  ? introText
+                  : introText || typewriter.displayText) ||
                   typewriter.isFrozen
-                    ? "text-white"
-                    : "text-white/85"
-                }`}
+                  ? "text-white"
+                  : "text-white/85"
+                  }`}
               />
               <Button
                 type="submit"
@@ -682,22 +897,180 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         <AppHeader
           title={title}
           actions={
-            <button
-              type="button"
-              onClick={handleShareCurrentChat}
-              className="rounded-full bg-neutral-800/60 px-3 py-1.5 text-[13px] font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
-            >
-              {shareCopied ? "Copied!" : "Share"}
-            </button>
+            <>
+              <button
+                type="button"
+                id="continuity-btn-header"
+                onClick={() => setShowContinuityModal(true)}
+                className={`relative flex items-center justify-center rounded-full backdrop-blur-sm transition-all duration-200 active:scale-95 ${
+                  user
+                    ? "h-8 w-8"
+                    : "px-3 py-1.5 text-[13px] font-medium bg-neutral-800/60 text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                } ${
+                  isGlowing
+                    ? "ring-2 ring-amber-400/90 shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse"
+                    : user
+                    ? "ring-1 ring-border hover:ring-border-strong"
+                    : ""
+                }`}
+              >
+                {user ? (
+                  <>
+                    {headerAvatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={headerAvatarUrl}
+                        alt={headerDisplayName}
+                        className="h-full w-full rounded-full object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold text-white">
+                        {headerInitial}
+                      </div>
+                    )}
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
+                        syncStatus === "synced"
+                          ? "bg-emerald-400"
+                          : syncStatus === "syncing"
+                          ? "bg-amber-400 animate-pulse"
+                          : syncStatus === "pending"
+                          ? "bg-orange-400"
+                          : "bg-neutral-500"
+                      }`}
+                    />
+                  </>
+                ) : (
+                  "Continuity"
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleShareCurrentChat}
+                className="rounded-full bg-neutral-800/60 px-3 py-1.5 text-[13px] font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+              >
+                Share
+              </button>
+            </>
           }
         />
+
+        {/* Continuity Modal (conversation view) */}
+        {showContinuityModal && (
+          <ContinuityModal
+            onClose={() => {
+              setShowContinuityModal(false);
+              setIsDropdownOpen(false);
+            }}
+            user={user}
+            syncStatus={syncStatus}
+            activeView={activeView}
+            onSelectView={(v) => setActiveView(v)}
+            localChatCount={listAllChats().length}
+            accountChatCount={accountChats.length}
+            onSignIn={() => {
+              setShowContinuityModal(false);
+              setIsDropdownOpen(false);
+              signInWithGoogle();
+            }}
+            onSignOut={() => {
+              setShowContinuityModal(false);
+              setIsDropdownOpen(false);
+              signOut();
+            }}
+            onRefreshAccountChats={refreshAccountChats}
+            onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
+            profile={profile}
+            onRefreshProfile={refreshProfile}
+          />
+        )}
       </div>
+
+      {shareDialog && (
+        <div
+          onClick={() => setShareDialog(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-lg border border-border bg-surface-raised p-6 shadow-2xl space-y-5"
+          >
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                Share chat
+              </div>
+              <h3 className="truncate text-base font-semibold text-foreground">
+                {shareDialog.title}
+              </h3>
+            </div>
+
+            <div className="rounded-lg border border-border bg-black/30 p-3.5">
+              <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                Viewer access
+              </div>
+              <p className="mt-1.5 text-sm leading-relaxed text-neutral-300">
+                Anyone with this link can view this shared ScoutAI chat and its
+                scouting results.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                Share link
+              </label>
+              <div className="flex h-11 items-center rounded-lg border border-border bg-surface px-3 focus-within:border-border-strong">
+                <input
+                  readOnly
+                  value={shareDialog.url}
+                  className="selectable min-w-0 flex-1 bg-transparent pr-3 text-sm text-neutral-300 outline-none"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyCurrentShareLink}
+                  aria-label="Copy share link"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+                >
+                  {shareCopied ? (
+                    <Check className="h-4 w-4 text-success" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShareDialog(null)}
+                className="rounded-full bg-neutral-800/60 px-4 py-1.5 text-sm text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="flex flex-1 overflow-hidden">
         <div className="flex w-full max-w-md flex-col border-r border-border">
           <div className="flex flex-1 flex-col overflow-hidden">
             {showChatsList ? (
-              <ChatsList onClose={() => setShowChatsList(false)} />
+              <ChatsList
+                onClose={() => setShowChatsList(false)}
+                activeView={activeView}
+                user={user}
+                accountChats={accountChats}
+                onRefreshAccountChats={refreshAccountChats}
+                onSignIn={() => {
+                  setShowChatsList(false);
+                  signInWithGoogle();
+                }}
+                onSwitchToLocal={() => setActiveView("local")}
+                currentChatId={chatId}
+                onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
+              />
             ) : (
               <>
                 <div className="sticky top-0 z-10 flex w-full items-center justify-center gap-2 px-4 py-2">
@@ -771,8 +1144,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
                         {run &&
                           (isLatestRun &&
-                          (phase === "running" || phase === "thinking") &&
-                          !run.packet ? (
+                            (phase === "running" || phase === "thinking") &&
+                            !run.packet ? (
                             <AgentTrace key={run.id} steps={run.steps} />
                           ) : (
                             <div key={run.id} className="space-y-2">
@@ -949,6 +1322,43 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               prefill={suggestionPrefill}
                             />
                           )
+                        ) : phase === "clarifying" ? (
+                          // Chat-only turn (greeting/small talk reply) — no
+                          // question pending, just let the user keep talking.
+                          <BorderGlow {...GLOW_PROPS}>
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const message = followUpText.trim();
+                                if (!message) return;
+                                setFollowUpText("");
+                                const updatedHistory: ConversationTurn[] = [
+                                  ...history,
+                                  { role: "user", content: message },
+                                ];
+                                setHistory(updatedHistory);
+                                askForNextQuestion(updatedHistory, slots);
+                              }}
+                              className="flex items-center gap-2 p-2.5"
+                            >
+                              <input
+                                value={followUpText}
+                                onChange={(e) =>
+                                  setFollowUpText(e.target.value)
+                                }
+                                placeholder="Type a message..."
+                                autoFocus
+                                className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none"
+                              />
+                              <Button
+                                type="submit"
+                                disabled={followUpText.trim().length === 0}
+                                className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                              >
+                                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                              </Button>
+                            </form>
+                          </BorderGlow>
                         ) : (
                           <BorderGlow {...GLOW_PROPS}>
                             <div className="flex items-center gap-2 p-2.5">

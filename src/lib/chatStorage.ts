@@ -6,9 +6,13 @@ export interface StoredChatState {
     runs: ScoutRun[];
     title?: string;
     titleIsCustom?: boolean;   // true once user has manually renamed
-    lastRenamedAt?: number;    // epoch ms, for rate limiting
+    lastRenamedAt?: number;    // epoch ms, kept for existing saved chats
+    renameTimestamps?: number[]; // epoch ms values for rename rate limiting
     lastUpdated?: number;
 }
+
+const RENAME_WINDOW_MS = 60 * 60 * 1000;
+const MAX_RENAMES_PER_WINDOW = 5;
 
 function storageKey(chatId: string) {
     return `scoutai:chat:${chatId}`;
@@ -56,9 +60,13 @@ export function renameChatState(
         return { ok: false, retryAfterMs: 0 };
     }
 
-    const RENAME_COOLDOWN_MS = 60 * 60 * 1000;
-    if (state.lastRenamedAt && Date.now() - state.lastRenamedAt < RENAME_COOLDOWN_MS) {
-        const remaining = RENAME_COOLDOWN_MS - (Date.now() - state.lastRenamedAt);
+    const now = Date.now();
+    const recentRenames = (state.renameTimestamps ?? (state.lastRenamedAt ? [state.lastRenamedAt] : []))
+        .filter((timestamp) => now - timestamp < RENAME_WINDOW_MS)
+        .sort((a, b) => a - b);
+
+    if (recentRenames.length >= MAX_RENAMES_PER_WINDOW) {
+        const remaining = RENAME_WINDOW_MS - (now - recentRenames[0]);
         return { ok: false, retryAfterMs: remaining };
     }
 
@@ -66,8 +74,9 @@ export function renameChatState(
         ...state,
         title: trimmed,
         titleIsCustom: true,
-        lastRenamedAt: Date.now(),
-        lastUpdated: Date.now(),
+        lastRenamedAt: now,
+        renameTimestamps: [...recentRenames, now],
+        lastUpdated: now,
     };
 
     try {
@@ -93,9 +102,15 @@ export function getChatRenameStatus(
 ): { canRename: true } | { canRename: false; retryAfterMs: number } {
     if (typeof window === "undefined") return { canRename: true };
     const state = loadChatState(chatId);
-    const RENAME_COOLDOWN_MS = 60 * 60 * 1000;
-    if (state?.lastRenamedAt && Date.now() - state.lastRenamedAt < RENAME_COOLDOWN_MS) {
-        const remaining = RENAME_COOLDOWN_MS - (Date.now() - state.lastRenamedAt);
+    if (!state) return { canRename: true };
+
+    const now = Date.now();
+    const recentRenames = (state.renameTimestamps ?? (state.lastRenamedAt ? [state.lastRenamedAt] : []))
+        .filter((timestamp) => now - timestamp < RENAME_WINDOW_MS)
+        .sort((a, b) => a - b);
+
+    if (recentRenames.length >= MAX_RENAMES_PER_WINDOW) {
+        const remaining = RENAME_WINDOW_MS - (now - recentRenames[0]);
         return { canRename: false, retryAfterMs: remaining };
     }
     return { canRename: true };
