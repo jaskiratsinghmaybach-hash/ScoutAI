@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { compressToEncodedURIComponent } from "lz-string";
 import { SuggestionPanel } from "@/components/scout/SuggestionPanel";
+import { ViewToggle, RightPaneView } from "@/components/scout/ViewToggle";
 import { Button } from "@/components/ui/button";
 import { ArrowUp, Check, Copy } from "lucide-react";
 import BorderGlow from "@/components/scout/BorderGlow";
@@ -86,12 +87,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     reportWrite,
   } = useAuth();
 
-  useEffect(() => {
-    if (isDropdownOpen) {
-      setShowContinuityModal(true);
-    }
-  }, [isDropdownOpen]);
-
   const handleDeleteConfirmedOnCurrentChat = (deletedId: string) => {
     if (chatId && chatId === deletedId) {
       router.push("/");
@@ -111,8 +106,24 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const [title, setTitle] = useState<string | undefined>(undefined);
   const [currentQuestion, setCurrentQuestion] =
     useState<ClarifyQuestion | null>(null);
-  const [showChatsList, setShowChatsList] = useState(false);
+  const [showChatsList, setShowChatsList] = useState(true);
   const [showContinuityModal, setShowContinuityModal] = useState(false);
+
+  // Opens the Continuity modal when the auth dropdown opens. Tracked with
+  // a comparison-state (not an effect) per react-hooks/set-state-in-effect:
+  // calling setState synchronously in an effect body is flagged even when
+  // the dependency array is correct, because effects are meant to sync
+  // with external systems, not derive one piece of state from another.
+  // Comparing during render and calling setState conditionally is the
+  // sanctioned pattern for "state derived from a value that changed."
+  const [prevIsDropdownOpen, setPrevIsDropdownOpen] =
+    useState(isDropdownOpen);
+  if (prevIsDropdownOpen !== isDropdownOpen) {
+    setPrevIsDropdownOpen(isDropdownOpen);
+    if (isDropdownOpen) {
+      setShowContinuityModal(true);
+    }
+  }
   const [shareCopied, setShareCopied] = useState(false);
   const [shareDialog, setShareDialog] = useState<{
     title: string;
@@ -121,6 +132,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   const [runs, setRuns] = useState<ScoutRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [rightPaneView, setRightPaneView] = useState<RightPaneView>("scout");
   const [error, setError] = useState<string | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isFollowingUp, setIsFollowingUp] = useState(false);
@@ -151,6 +163,37 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }>({ finalSlots: EMPTY_SLOTS });
   const hasStarted = phase !== "intro";
   const hydratedRef = useRef(false);
+
+  // askForNextQuestion is defined further down in the component (it's
+  // large and depends on several handlers below it). The hydration
+  // effect needs to call it on mount, before its declaration would be
+  // reached in source order. A function declaration IS hoisted and this
+  // is safe at runtime (the effect only fires after the component body
+  // finishes evaluating once), but react-hooks/immutability can't prove
+  // that statically. Routing the call through a ref — updated via a
+  // plain assignment in an effect after askForNextQuestion is declared —
+  // gives the linter a pattern it can verify, and also protects against
+  // any future refactor accidentally introducing real staleness here.
+  const askForNextQuestionRef = useRef<
+    ((history: ConversationTurn[], slots: SlotState) => Promise<void>) | null
+  >(null);
+
+  // Sidebar defaults: open on the landing page, closed once any chat
+  // (new or existing) actually starts — matching the main conversation
+  // view's original behavior, where "Chats" must be clicked manually
+  // from then on. Tracked with STATE (not a ref) per the current
+  // react-hooks/refs rule, which forbids reading/writing ref.current
+  // during render. Comparing against a state value during render, and
+  // calling setState synchronously when it changes, is the sanctioned
+  // replacement for the old ref-based "adjust state on prop change"
+  // pattern: https://react.dev/reference/eslint-plugin-react-hooks/lints/refs
+  const [prevHasStarted, setPrevHasStarted] = useState(hasStarted);
+  if (prevHasStarted !== hasStarted) {
+    setPrevHasStarted(hasStarted);
+    if (hasStarted) {
+      setShowChatsList(false);
+    }
+  }
 
   // Hydrate chat state when chatId, activeView, or user changes
   useEffect(() => {
@@ -194,7 +237,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       setRuns(stored.runs ?? []);
       setTitle(
         stored.title ??
-        stored.history.find((h) => h.role === "user")?.content.slice(0, 40),
+          stored.history.find((h) => h.role === "user")?.content.slice(0, 40),
       );
       setActiveRunId(
         stored.runs?.length ? stored.runs[stored.runs.length - 1].id : null,
@@ -206,7 +249,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         stored.history.length === 1 &&
         stored.history[0].role === "user"
       ) {
-        askForNextQuestion(stored.history, stored.slots);
+        askForNextQuestionRef.current?.(stored.history, stored.slots);
       } else if (stored.history.length > 0) {
         setPhase("clarifying");
       }
@@ -217,7 +260,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     return () => {
       isCancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatId, activeView, user]);
 
   function handleInitialSubmit(textToSubmit?: string) {
@@ -245,14 +287,12 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         reportWrite(upsertChat(chatId, saved));
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, history, slots, runs, title, user]);
+  }, [chatId, history, slots, runs, title, user, reportWrite]);
 
   async function askForNextQuestion(
     updatedHistory: ConversationTurn[],
     updatedSlots: SlotState,
   ) {
-    setPhase("thinking");
     setError(null);
     wasStoppedRef.current = false;
     stoppedDuringRef.current = "clarify";
@@ -326,6 +366,47 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   }
 
+  // Keep the ref pointed at the latest askForNextQuestion so the
+  // hydration effect above (which runs before this declaration in
+  // source order) always calls a fresh, non-stale version.
+  useEffect(() => {
+    askForNextQuestionRef.current = askForNextQuestion;
+  });
+
+  /**
+   * Edits a past user message at the given history index. Today this is
+   * non-branching: everything after that message is discarded and the
+   * conversation re-runs from the edited point, exactly like a fresh
+   * follow-up. Slots are reset and re-derived by the model from the
+   * truncated history, since we don't keep per-turn slot snapshots.
+   *
+   * TODO (#4): replace this with real branching — keep the discarded
+   * tail as an inactive branch instead of deleting it, and add the
+   * ChatGPT-style "1/2 <>" pager to switch between versions.
+   */
+  function handleEditMessage(index: number, newContent: string) {
+    const truncatedHistory = history.slice(0, index);
+    const updatedHistory: ConversationTurn[] = [
+      ...truncatedHistory,
+      { role: "user", content: newContent },
+    ];
+
+    // Abort anything in flight from the old branch before starting fresh
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    if (streamReaderRef.current) {
+      streamReaderRef.current.cancel().catch(() => {});
+    }
+
+    setHistory(updatedHistory);
+    setCurrentQuestion(null);
+    setError(null);
+    // Drop any runs that were triggered by messages now removed from history
+    setRuns((prev) => prev.filter((r) => r.triggerMessageIndex < index));
+    askForNextQuestion(updatedHistory, EMPTY_SLOTS);
+  }
+
   function handleIntroSubmit(e: React.FormEvent) {
     e.preventDefault();
     const submittedText = (
@@ -353,7 +434,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         const saved = loadChatState(newId);
         if (saved) {
           upsertChat(newId, saved).catch((err) =>
-            console.error("[Continuity] Initial chat upsert failed:", err)
+            console.error("[Continuity] Initial chat upsert failed:", err),
           );
         }
       }
@@ -595,7 +676,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       abortControllerRef.current.abort();
     }
     if (streamReaderRef.current) {
-      streamReaderRef.current.cancel().catch(() => { });
+      streamReaderRef.current.cancel().catch(() => {});
     }
     setPhase("stopped");
   }
@@ -654,30 +735,59 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   // ---------- INTRO / LANDING VIEW ----------
   if (!hasStarted && history.length === 0) {
     return (
-      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4">
-        {/* Upper Left: Chats Menu Button */}
-        <div className="absolute left-6 top-6 z-20">
-          <button
-            type="button"
-            onClick={() => setShowChatsList(true)}
-            className="group inline-flex items-center gap-1 font-display rounded-full bg-neutral-800/60 px-3 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
-          >
-            <svg
-              className="h-3.5 w-3.5 text-neutral-400 transition-colors group-hover:text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-              />
-            </svg>
-            <span>Chats</span>
-          </button>
+      <main className="flex h-screen w-full overflow-hidden">
+        {/* Inline collapsible chats column — matches the main chat view's
+            pattern instead of the old full-screen overlay drawer. */}
+        <div
+          className={`flex h-full flex-col border-r border-border transition-all duration-200 ${
+            showChatsList ? "w-full max-w-sm" : "w-0 overflow-hidden border-r-0"
+          }`}
+        >
+          {showChatsList && (
+            <ChatsList
+              onClose={() => setShowChatsList(false)}
+              activeView={activeView}
+              user={user}
+              accountChats={accountChats}
+              onRefreshAccountChats={refreshAccountChats}
+              onSignIn={() => {
+                setShowChatsList(false);
+                signInWithGoogle();
+              }}
+              onSwitchToLocal={() => setActiveView("local")}
+              currentChatId={chatId}
+              onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
+            />
+          )}
         </div>
+
+        <div className="relative flex flex-1 flex-col items-center justify-center overflow-hidden px-4">
+          {/* Upper Left: Chats toggle button — only shown when the column
+              is collapsed, so there's always a way to reopen it */}
+          {!showChatsList && (
+            <div className="absolute left-6 top-6 z-20">
+              <button
+                type="button"
+                onClick={() => setShowChatsList(true)}
+                className="group inline-flex items-center gap-1 font-display rounded-full bg-neutral-800/60 px-3 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+              >
+                <svg
+                  className="h-3.5 w-3.5 text-neutral-400 transition-colors group-hover:text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+                <span>Chats</span>
+              </button>
+            </div>
+          )}
 
         {/* Upper Right: Continuity Button */}
         <div className="absolute right-6 top-6 z-20">
@@ -693,8 +803,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
               isGlowing
                 ? "ring-2 ring-amber-400/90 shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse"
                 : user
-                ? "ring-1 ring-border hover:ring-border-strong"
-                : ""
+                  ? "ring-1 ring-border hover:ring-border-strong"
+                  : ""
             }`}
           >
             {user ? (
@@ -716,10 +826,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     syncStatus === "synced"
                       ? "bg-emerald-400"
                       : syncStatus === "syncing"
-                      ? "bg-amber-400 animate-pulse"
-                      : syncStatus === "pending"
-                      ? "bg-orange-400"
-                      : "bg-neutral-500"
+                        ? "bg-amber-400 animate-pulse"
+                        : syncStatus === "pending"
+                          ? "bg-orange-400"
+                          : "bg-neutral-500"
                   }`}
                 />
               </>
@@ -757,34 +867,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             profile={profile}
             onRefreshProfile={refreshProfile}
           />
-        )}
-
-        {/* Left Sliding Drawer for Chats */}
-        {showChatsList && (
-          <div className="fixed inset-0 z-50 flex">
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
-              onClick={() => setShowChatsList(false)}
-            />
-            {/* Drawer content */}
-            <div className="relative z-10 flex h-full w-full max-w-sm flex-col border-r border-border bg-surface-raised shadow-2xl">
-              <ChatsList
-                onClose={() => setShowChatsList(false)}
-                activeView={activeView}
-                user={user}
-                accountChats={accountChats}
-                onRefreshAccountChats={refreshAccountChats}
-                onSignIn={() => {
-                  setShowChatsList(false);
-                  signInWithGoogle();
-                }}
-                onSwitchToLocal={() => setActiveView("local")}
-                currentChatId={chatId}
-                onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
-              />
-            </div>
-          </div>
         )}
 
         <div className="relative z-10 mx-auto flex w-full max-w-xl flex-col items-center text-center">
@@ -839,13 +921,14 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   userHasEdited ? "Describe the scene you're scouting..." : ""
                 }
                 autoFocus
-                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none ${(userHasEdited
-                  ? introText
-                  : introText || typewriter.displayText) ||
+                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none ${
+                  (userHasEdited
+                    ? introText
+                    : introText || typewriter.displayText) ||
                   typewriter.isFrozen
-                  ? "text-white"
-                  : "text-white/85"
-                  }`}
+                    ? "text-white"
+                    : "text-white/85"
+                }`}
               />
               <Button
                 type="submit"
@@ -879,6 +962,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             ))}
           </div>
         </div>
+      </div>
       </main>
     );
   }
@@ -910,8 +994,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   isGlowing
                     ? "ring-2 ring-amber-400/90 shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse"
                     : user
-                    ? "ring-1 ring-border hover:ring-border-strong"
-                    : ""
+                      ? "ring-1 ring-border hover:ring-border-strong"
+                      : ""
                 }`}
               >
                 {user ? (
@@ -933,10 +1017,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         syncStatus === "synced"
                           ? "bg-emerald-400"
                           : syncStatus === "syncing"
-                          ? "bg-amber-400 animate-pulse"
-                          : syncStatus === "pending"
-                          ? "bg-orange-400"
-                          : "bg-neutral-500"
+                            ? "bg-amber-400 animate-pulse"
+                            : syncStatus === "pending"
+                              ? "bg-orange-400"
+                              : "bg-neutral-500"
                       }`}
                     />
                   </>
@@ -1069,7 +1153,9 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                 }}
                 onSwitchToLocal={() => setActiveView("local")}
                 currentChatId={chatId}
-                onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
+                onDeleteConfirmedOnCurrentChat={
+                  handleDeleteConfirmedOnCurrentChat
+                }
               />
             ) : (
               <>
@@ -1098,26 +1184,33 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   </button>
 
                   {/* New Chat (+) Button */}
-                  <button
-                    type="button"
-                    onClick={handleNewChat}
-                    aria-label="New chat"
-                    className="group flex h-[35px] w-[35px] items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
-                  >
-                    <svg
-                      className="h-4 w-4 text-neutral-400 transition-colors group-hover:text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2.5}
+                  <div className="relative group/newchat">
+                    <button
+                      type="button"
+                      onClick={handleNewChat}
+                      aria-label="New chat"
+                      className="group flex h-[35px] w-[35px] items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 4.5v15m7.5-7.5h-15"
-                      />
-                    </svg>
-                  </button>
+                      <svg
+                        className="h-4 w-4 text-neutral-400 transition-colors group-hover:text-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 4.5v15m7.5-7.5h-15"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* Tooltip: hidden by default, fades in on hover, doesn't block clicks */}
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-neutral-800 px-2 py-1 text-[11px] font-medium text-neutral-200 opacity-0 shadow-lg transition-opacity duration-150 group-hover/newchat:opacity-100">
+                      New chat
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
@@ -1135,7 +1228,12 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     return (
                       <div key={i} className="space-y-4">
                         {turn.role === "user" ? (
-                          <UserMessage content={turn.content} />
+                          <UserMessage
+                            content={turn.content}
+                            onEdit={(newContent) =>
+                              handleEditMessage(i, newContent)
+                            }
+                          />
                         ) : (
                           <div className="max-w-[90%] text-sm leading-relaxed text-foreground-muted">
                             {turn.content}
@@ -1144,8 +1242,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
                         {run &&
                           (isLatestRun &&
-                            (phase === "running" || phase === "thinking") &&
-                            !run.packet ? (
+                          (phase === "running" || phase === "thinking") &&
+                          !run.packet ? (
                             <AgentTrace key={run.id} steps={run.steps} />
                           ) : (
                             <div key={run.id} className="space-y-2">
@@ -1355,7 +1453,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 disabled={followUpText.trim().length === 0}
                                 className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
                               >
-                                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                                <ArrowUp
+                                  className="h-4 w-4"
+                                  strokeWidth={2.5}
+                                />
                               </Button>
                             </form>
                           </BorderGlow>
@@ -1488,55 +1589,69 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-8 py-8">
-          {(() => {
-            const active = runs.find((r) => r.id === activeRunId);
+          <div className="mb-6 flex justify-center">
+            <ViewToggle value={rightPaneView} onChange={setRightPaneView} />
+          </div>
 
-            if (!active) {
-              return phase !== "thinking" && phase !== "running" ? (
-                <SuggestionPanel
-                  onSelect={(text) => {
-                    if (
-                      phase === "clarifying" &&
-                      currentQuestion?.type === "text"
-                    ) {
-                      setSuggestionPrefill(text);
-                    } else if (phase === "stopped") {
-                      setFollowUpText(text);
-                    } else if (history.length === 0) {
-                      setFollowUpText(text);
-                      setIntroText(text);
-                    } else {
-                      setFollowUpText(text);
-                    }
-                  }}
-                />
-              ) : null;
-            }
+          {rightPaneView === "scout" ? (
+            <div className="flex h-[60vh] flex-col items-center justify-center text-center text-sm text-neutral-500">
+              <p className="max-w-xs">
+                The interactive Scout map view is coming soon — this is
+                where you&apos;ll explore locations visually as you describe
+                your scene.
+              </p>
+            </div>
+          ) : (
+            (() => {
+              const active = runs.find((r) => r.id === activeRunId);
 
-            if (!active.packet) {
+              if (!active) {
+                return phase !== "thinking" && phase !== "running" ? (
+                  <SuggestionPanel
+                    onSelect={(text) => {
+                      if (
+                        phase === "clarifying" &&
+                        currentQuestion?.type === "text"
+                      ) {
+                        setSuggestionPrefill(text);
+                      } else if (phase === "stopped") {
+                        setFollowUpText(text);
+                      } else if (history.length === 0) {
+                        setFollowUpText(text);
+                        setIntroText(text);
+                      } else {
+                        setFollowUpText(text);
+                      }
+                    }}
+                  />
+                ) : null;
+              }
+
+              if (!active.packet) {
+                return (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <SkeletonCard />
+                    <SkeletonCard />
+                    <SkeletonCard />
+                    <SkeletonCard />
+                  </div>
+                );
+              }
+
               return (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <SkeletonCard />
-                  <SkeletonCard />
-                  <SkeletonCard />
-                  <SkeletonCard />
+                  {active.packet.locations.map((loc, i) => (
+                    <div
+                      key={loc.id}
+                      className="max-h-[calc(100vh-4rem)] overflow-y-auto"
+                    >
+                      <LocationCard location={loc} rank={i + 1} />
+                    </div>
+                  ))}
                 </div>
               );
-            }
-
-            return (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {active.packet.locations.map((loc, i) => (
-                  <div
-                    key={loc.id}
-                    className="max-h-[calc(100vh-4rem)] overflow-y-auto"
-                  >
-                    <LocationCard location={loc} rank={i + 1} />
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+            })()
+          )}
         </div>
       </main>
     </div>

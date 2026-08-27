@@ -86,7 +86,11 @@ If vague:
 - You MUST return "next_question" as a "choice" type question.
 - Set "slot" to whichever of the still-missing slots your options are actually answering (e.g. if description is already known and mood is missing, your options should be mood-flavored and slot should be "mood").
 - The question "text" should be a short, inviting line like "Not sure yet? Here are a few directions to spark it:"
-- "options" MUST contain 3 concrete, vivid, specific choices tailored to whichever slot you picked (not generic categories) — e.g. for description: "A rain-soaked rooftop confrontation, 1980s noir"; for mood: "Tense and claustrophobic", "Warm and nostalgic", "Chaotic and high-energy". Invent fresh ones each time, don't reuse examples verbatim.
+- "options" MUST contain 3 concrete, plain-spoken choices tailored to whichever slot you picked — write them the way a working filmmaker would actually describe a scene out loud, NOT like a poetic caption or short-story pitch. Avoid stacking multiple vivid adjectives before every noun (e.g. avoid "sun-drenched," "rain-soaked," "neon-lit" style writing). Say what the scene or mood plainly IS, not how it feels in literary prose.
+  - Good, for description: "A confrontation scene on a rooftop at night, 1980s crime film" / "An outdoor wedding at a vineyard, daytime"
+  - Bad, for description: "A rain-soaked rooftop confrontation, 1980s noir..." / "A sun-drenched vineyard wedding in the countryside..."
+  - Good, for mood: "Tense and on edge", "Warm and nostalgic", "Fast-paced and chaotic"
+  - Invent fresh ones each time in this plain style, don't reuse examples verbatim.
 - Leave "chat_reply" empty in this case — the options themselves carry the invitation.
 
 If scene_brief or clarifying_answer:

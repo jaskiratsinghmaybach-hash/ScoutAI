@@ -1,0 +1,7 @@
+{
+  "tailwindCSS.classAttributes": ["className"],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.tailwindCSS": "never"
+  },
+  "tailwindCSS.lint.cssConflict": "ignore"
+}

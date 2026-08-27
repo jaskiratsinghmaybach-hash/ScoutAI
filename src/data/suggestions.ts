@@ -1,9 +1,9 @@
 export const SCENE_SUGGESTIONS: string[] = [
-    "A rain-soaked rooftop confrontation, 1980s noir...",
-    "A quiet monastery courtyard at dawn for a meditation documentary...",
-    "A neon-lit alley chase through a futuristic city...",
-    "A sun-drenched vineyard wedding in the countryside...",
-    "An abandoned industrial warehouse for a tense standoff...",
+    "A confrontation scene on a rooftop at night, 1980s crime film",
+    "A quiet monastery courtyard for a meditation documentary",
+    "A car chase through narrow city alleys, futuristic setting",
+    "An outdoor wedding at a vineyard, daytime",
+    "A standoff scene inside an abandoned warehouse",
 ];
 
 export function getRandomSuggestions(count: number = 3): string[] {

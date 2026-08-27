@@ -37,10 +37,24 @@ export interface UseAuthReturn {
  * and auto-opens account dropdown after glow animation completes.
  */
 export function useAuth(): UseAuthReturn {
+    // activeView is initialized directly from localStorage via useState's
+    // lazy initializer, rather than starting at a fixed default and then
+    // syncing from localStorage in a mount effect. This reads the "external
+    // system" (localStorage) exactly once, before first render, which is
+    // both correct behavior and avoids react-hooks/set-state-in-effect —
+    // there's no synchronous setState call inside an effect body at all.
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
-    const [activeView, setActiveViewRaw] = useState<ActiveView>("local");
+    const [activeView, setActiveViewRaw] = useState<ActiveView>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("scoutai:active_view") as ActiveView | null;
+            if (saved === "local" || saved === "account") {
+                return saved;
+            }
+        }
+        return "local";
+    });
     const [accountChats, setAccountChats] = useState<ChatSummary[]>([]);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isGlowing, setIsGlowing] = useState(false);
@@ -53,16 +67,6 @@ export function useAuth(): UseAuthReturn {
         setActiveViewRaw(view);
         if (typeof window !== "undefined") {
             localStorage.setItem("scoutai:active_view", view);
-        }
-    }, []);
-
-    // Load saved activeView on mount
-    useEffect(() => {
-        if (typeof window !== "undefined") {
-            const saved = localStorage.getItem("scoutai:active_view") as ActiveView | null;
-            if (saved === "local" || saved === "account") {
-                setActiveViewRaw(saved);
-            }
         }
     }, []);
 
