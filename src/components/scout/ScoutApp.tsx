@@ -1189,7 +1189,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                       type="button"
                       onClick={handleNewChat}
                       aria-label="New chat"
-                      className="group flex h-[35px] w-[35px] items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+                      className="group flex h-8.75 h-8.75 items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
                     >
                       <svg
                         className="h-4 w-4 text-neutral-400 transition-colors group-hover:text-white"

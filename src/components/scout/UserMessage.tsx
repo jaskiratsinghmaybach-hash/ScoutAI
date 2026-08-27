@@ -64,7 +64,7 @@ export function UserMessage({ content, onEdit }: UserMessageProps) {
 
     if (isEditing) {
         return (
-            <div className="ml-auto w-fit max-w-[85%] min-w-[240px] rounded-3xl bg-surface-raised px-3 py-2 text-sm">
+            <div className="ml-auto w-fit max-w-[85%] min-w-60 rounded-3xl bg-surface-raised px-3 py-2 text-sm">
                 <textarea
                     ref={textareaRef}
                     value={draft}
