@@ -29,6 +29,16 @@ import {
 } from "@/lib/chatStorage";
 import { upsertChat, fetchAccountChatState } from "@/lib/continuitySync";
 import { useAuth } from "@/lib/useAuth";
+import {
+  createEmptyTree,
+  addMessage,
+  getActivePath,
+  getSiblingInfo,
+  setActiveChild,
+  treeFromFlatHistory,
+  type ConversationTree,
+  type MessageNode,
+} from "@/lib/conversationTree";
 import type {
   SlotState,
   ClarifyQuestion,
@@ -90,7 +100,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const handleDeleteConfirmedOnCurrentChat = (deletedId: string) => {
     if (chatId && chatId === deletedId) {
       router.push("/");
-      setHistory([]);
+      setTree(createEmptyTree());
       setSlots(EMPTY_SLOTS);
       setRuns([]);
       setActiveRunId(null);
@@ -101,12 +111,37 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const [phase, setPhase] = useState<Phase>("intro");
   const [introText, setIntroText] = useState("");
   const [userHasEdited, setUserHasEdited] = useState(false);
-  const [history, setHistory] = useState<ConversationTurn[]>([]);
+
+  // Phase 2 of message branching: the conversation is stored as a tree
+  // internally, but `history` is derived from it and kept in exactly
+  // the same ConversationTurn[] shape the rest of this file already
+  // expects. This means every READ site below (`.map`, `.length`,
+  // `.slice`, localStorage/Supabase save-load, etc.) needs ZERO changes
+  // — only the WRITE sites (setHistory calls) are converted to tree
+  // operations. Branching UI/behavior itself is Phase 3; this phase is
+  // "same behavior, different internal representation."
+  const [tree, setTree] = useState<ConversationTree>(createEmptyTree());
+  const activePathNodes: MessageNode[] = getActivePath(tree);
+  const history: ConversationTurn[] = activePathNodes.map((node) => ({
+    role: node.role,
+    content: node.content,
+  }));
+  // The id of the currently-active leaf node — i.e. whichever message
+  // is last in the active path. Write sites that append a new message
+  // need this as the parentId for the new node.
+  const activeLeafId: string | null = activePathNodes.at(-1)?.id ?? null;
+
   const [slots, setSlots] = useState<SlotState>(EMPTY_SLOTS);
   const [title, setTitle] = useState<string | undefined>(undefined);
   const [currentQuestion, setCurrentQuestion] =
     useState<ClarifyQuestion | null>(null);
-  const [showChatsList, setShowChatsList] = useState(true);
+  // Initialize based on whether this mount already has a chatId (i.e.
+  // we navigated here via router.push to an existing/new chat route),
+  // not on a same-instance state transition — router.push to a
+  // dynamic route unmounts and remounts this component, so there is
+  // no "previous render" to compare hasStarted against in that case.
+  // Landing page (no chatId) starts open; any chat route starts closed.
+  const [showChatsList, setShowChatsList] = useState(!chatId);
   const [showContinuityModal, setShowContinuityModal] = useState(false);
 
   // Opens the Continuity modal when the auth dropdown opens. Tracked with
@@ -219,7 +254,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       hydratedRef.current = true;
 
       if (!stored || !stored.history || stored.history.length === 0) {
-        setHistory([]);
+        setTree(createEmptyTree());
         setSlots(EMPTY_SLOTS);
         setRuns([]);
         setActiveRunId(null);
@@ -232,7 +267,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         return;
       }
 
-      setHistory(stored.history);
+      setTree(treeFromFlatHistory(stored.history));
       setSlots(stored.slots);
       setRuns(stored.runs ?? []);
       setTitle(
@@ -270,7 +305,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     const newHistory: ConversationTurn[] = [{ role: "user", content: message }];
     const newSlots = { ...EMPTY_SLOTS, description: message };
     setTitle(message.slice(0, 40));
-    setHistory(newHistory);
+    setTree(treeFromFlatHistory(newHistory));
     setSlots(newSlots);
     askForNextQuestion(newHistory, newSlots);
   }
@@ -329,21 +364,28 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
       if (data.next_question) {
         setCurrentQuestion(data.next_question);
-        setHistory([
-          ...updatedHistory,
-          { role: "assistant", content: data.next_question.text },
-        ]);
+        setTree((prevTree) => {
+          const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+          return addMessage(
+            prevTree,
+            leafId,
+            "assistant",
+            data.next_question.text,
+          ).tree;
+        });
         setPhase("clarifying");
       } else if (isChatOnly) {
         // Small talk / greeting: reply in character and go back to
         // waiting for the next message — never launch the scout pipeline.
-        setHistory([
-          ...updatedHistory,
-          {
-            role: "assistant",
-            content: data.chat_reply || "Hey! What scene are you scouting?",
-          },
-        ]);
+        setTree((prevTree) => {
+          const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+          return addMessage(
+            prevTree,
+            leafId,
+            "assistant",
+            data.chat_reply || "Hey! What scene are you scouting?",
+          ).tree;
+        });
         setCurrentQuestion(null);
         setPhase("clarifying");
       } else {
@@ -385,12 +427,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
    * ChatGPT-style "1/2 <>" pager to switch between versions.
    */
   function handleEditMessage(index: number, newContent: string) {
-    const truncatedHistory = history.slice(0, index);
-    const updatedHistory: ConversationTurn[] = [
-      ...truncatedHistory,
-      { role: "user", content: newContent },
-    ];
-
     // Abort anything in flight from the old branch before starting fresh
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -399,12 +435,79 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       streamReaderRef.current.cancel().catch(() => {});
     }
 
-    setHistory(updatedHistory);
+    setTree((prevTree) => {
+      const activePath = getActivePath(prevTree);
+      const editedNode = activePath[index];
+      if (!editedNode) return prevTree; // defensive: bad index, no-op
+
+      // The new message becomes a SIBLING of the edited node, under its
+      // original parent. Every real message — including the very first
+      // one — has a real parentId (either another message, or the
+      // synthetic root), so this is a single, uniform code path with no
+      // special case for editing the first message. See
+      // conversationTree.ts's SYNTHETIC ROOT design note for why this
+      // matters: without it, editing message #1 had no parent to attach
+      // a sibling to and silently discarded the old branch instead.
+      const parentId = editedNode.parentId ?? prevTree.rootId;
+      const result = addMessage(prevTree, parentId, "user", newContent);
+
+      // The new sibling must become the active branch immediately —
+      // otherwise the edit would appear to do nothing, since
+      // getActivePath would keep following the original, unedited node.
+      return {
+        ...result.tree,
+        activeChildByParent: {
+          ...result.tree.activeChildByParent,
+          [parentId]: result.nodeId,
+        },
+      };
+    });
+
     setCurrentQuestion(null);
     setError(null);
-    // Drop any runs that were triggered by messages now removed from history
+    // Drop any runs that were triggered by messages now removed from
+    // the active path (their trigger index is at or after the edit
+    // point, since everything from `index` onward is being replaced).
     setRuns((prev) => prev.filter((r) => r.triggerMessageIndex < index));
+
+    const truncatedHistory = history.slice(0, index);
+    const updatedHistory: ConversationTurn[] = [
+      ...truncatedHistory,
+      { role: "user", content: newContent },
+    ];
     askForNextQuestion(updatedHistory, EMPTY_SLOTS);
+  }
+
+  /**
+   * Switches which sibling is active under a given parent — used by the
+   * pager (< N/M >) on an edited message. This ONLY moves the pointer;
+   * it never auto-triggers a new API call. If the target branch already
+   * has downstream messages, they appear immediately via getActivePath.
+   * If it's a dead end (never continued), the UI just shows it as the
+   * latest message and waits for the user to type, same as ChatGPT.
+   */
+  function handleSwitchBranch(parentId: string, targetChildId: string) {
+    // Abort anything in flight — it belongs to the branch being left,
+    // and must never be allowed to land on the newly active one.
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    if (streamReaderRef.current) {
+      streamReaderRef.current.cancel().catch(() => {});
+    }
+    wasStoppedRef.current = true;
+
+    setTree((prevTree) => setActiveChild(prevTree, parentId, targetChildId));
+    setCurrentQuestion(null);
+    setError(null);
+
+    // If the branch we're leaving was actively running/thinking, that
+    // phase belongs to the old branch and shouldn't carry over.
+    setPhase((prevPhase) =>
+      prevPhase === "running" || prevPhase === "thinking"
+        ? "clarifying"
+        : prevPhase,
+    );
   }
 
   function handleIntroSubmit(e: React.FormEvent) {
@@ -443,7 +546,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
 
     setTitle(initialTitle);
-    setHistory(newHistory);
+    setTree(treeFromFlatHistory(newHistory));
     setSlots(newSlots);
     askForNextQuestion(newHistory, newSlots);
   }
@@ -517,7 +620,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       ...history,
       { role: "user", content: answer },
     ];
-    setHistory(updatedHistory);
+    setTree((prevTree) => {
+      const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+      return addMessage(prevTree, leafId, "user", answer).tree;
+    });
     setCurrentQuestion(null);
     setSuggestionPrefill(undefined);
     askForNextQuestion(updatedHistory, slots);
@@ -687,7 +793,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
     router.push("/");
     setPhase("intro");
-    setHistory([]);
+    setTree(createEmptyTree());
     setSlots(EMPTY_SLOTS);
     setRuns([]);
     setActiveRunId(null);
@@ -712,7 +818,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       ...history,
       { role: "user", content: msg },
     ];
-    setHistory(updatedHistory);
+    setTree((prevTree) => {
+      const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+      return addMessage(prevTree, leafId, "user", msg).tree;
+    });
 
     const updatedSlots = {
       ...slots,
@@ -1189,7 +1298,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                       type="button"
                       onClick={handleNewChat}
                       aria-label="New chat"
-                      className="group flex h-8.75 h-8.75 items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+                      className="group flex h-[35px] w-[35px] items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
                     >
                       <svg
                         className="h-4 w-4 text-neutral-400 transition-colors group-hover:text-white"
@@ -1215,28 +1324,58 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
                 <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
                   {/* Merged message and activity stream */}
-                  {history.map((turn, i) => {
+                  {activePathNodes.map((node, i) => {
                     const run = runs.find(
                       (r) =>
                         r.triggerMessageIndex === i &&
-                        r.triggerMessageContent === turn.content,
+                        r.triggerMessageContent === node.content,
                     );
                     const isLatestRun =
                       run && run.id === runs[runs.length - 1]?.id;
                     const isActive = run ? activeRunId === run.id : false;
 
+                    const siblingInfo = getSiblingInfo(tree, node.id);
+                    const hasSiblings = Boolean(
+                      siblingInfo && siblingInfo.total > 1,
+                    );
+
                     return (
-                      <div key={i} className="space-y-4">
-                        {turn.role === "user" ? (
+                      <div key={node.id} className="space-y-4">
+                        {node.role === "user" ? (
                           <UserMessage
-                            content={turn.content}
+                            content={node.content}
                             onEdit={(newContent) =>
                               handleEditMessage(i, newContent)
+                            }
+                            pager={
+                              hasSiblings && siblingInfo
+                                ? {
+                                    position: siblingInfo.position,
+                                    total: siblingInfo.total,
+                                    onNavigate: (direction) => {
+                                      const parentId =
+                                        node.parentId ?? tree.rootId;
+                                      const currentIndex =
+                                        siblingInfo.position - 1;
+                                      const targetIndex =
+                                        direction === "prev"
+                                          ? currentIndex - 1
+                                          : currentIndex + 1;
+                                      const targetSibling =
+                                        siblingInfo.siblings[targetIndex];
+                                      if (!targetSibling) return;
+                                      handleSwitchBranch(
+                                        parentId,
+                                        targetSibling.id,
+                                      );
+                                    },
+                                  }
+                                : undefined
                             }
                           />
                         ) : (
                           <div className="max-w-[90%] text-sm leading-relaxed text-foreground-muted">
-                            {turn.content}
+                            {node.content}
                           </div>
                         )}
 
@@ -1434,7 +1573,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                   ...history,
                                   { role: "user", content: message },
                                 ];
-                                setHistory(updatedHistory);
+                                setTree((prevTree) => {
+                                  const leafId =
+                                    getActivePath(prevTree).at(-1)?.id ??
+                                    null;
+                                  return addMessage(
+                                    prevTree,
+                                    leafId,
+                                    "user",
+                                    message,
+                                  ).tree;
+                                });
                                 askForNextQuestion(updatedHistory, slots);
                               }}
                               className="flex items-center gap-2 p-2.5"
@@ -1506,7 +1655,16 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 ...history,
                                 { role: "user", content: message },
                               ];
-                              setHistory(updatedHistory);
+                              setTree((prevTree) => {
+                                const leafId =
+                                  getActivePath(prevTree).at(-1)?.id ?? null;
+                                return addMessage(
+                                  prevTree,
+                                  leafId,
+                                  "user",
+                                  message,
+                                ).tree;
+                              });
                               dispatchScout(
                                 lastScoutArgsRef.current.finalSlots,
                                 message,
@@ -1517,7 +1675,16 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 ...history,
                                 { role: "user", content: message },
                               ];
-                              setHistory(updatedHistory);
+                              setTree((prevTree) => {
+                                const leafId =
+                                  getActivePath(prevTree).at(-1)?.id ?? null;
+                                return addMessage(
+                                  prevTree,
+                                  leafId,
+                                  "user",
+                                  message,
+                                ).tree;
+                              });
                               askForNextQuestion(updatedHistory, slots);
                             }
                           }}

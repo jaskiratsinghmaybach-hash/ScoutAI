@@ -1,7 +1,23 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, ChevronUp, Copy, Check, Pencil } from "lucide-react";
+import {
+    ChevronDown,
+    ChevronUp,
+    ChevronLeft,
+    ChevronRight,
+    Copy,
+    Check,
+    Pencil,
+} from "lucide-react";
+
+export interface MessagePagerInfo {
+    /** 1-based position of this message among its siblings. */
+    position: number;
+    /** Total number of sibling versions. */
+    total: number;
+    onNavigate: (direction: "prev" | "next") => void;
+}
 
 interface UserMessageProps {
     content: string;
@@ -11,9 +27,16 @@ interface UserMessageProps {
      * the local text-editing UI.
      */
     onEdit?: (newContent: string) => void;
+    /**
+     * Present only when this message has sibling versions (i.e. it was
+     * edited at least once). Renders a "< N/M >" pager to switch
+     * between them. Absent entirely for messages with no siblings, so
+     * there's no empty pager clutter on ordinary messages.
+     */
+    pager?: MessagePagerInfo;
 }
 
-export function UserMessage({ content, onEdit }: UserMessageProps) {
+export function UserMessage({ content, onEdit, pager }: UserMessageProps) {
     const [expanded, setExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(content);
@@ -26,7 +49,6 @@ export function UserMessage({ content, onEdit }: UserMessageProps) {
     useEffect(() => {
         if (isEditing && textareaRef.current) {
             textareaRef.current.focus();
-            // Place cursor at the end rather than selecting all
             const len = textareaRef.current.value.length;
             textareaRef.current.setSelectionRange(len, len);
         }
@@ -64,7 +86,7 @@ export function UserMessage({ content, onEdit }: UserMessageProps) {
 
     if (isEditing) {
         return (
-            <div className="ml-auto w-fit max-w-[85%] min-w-60 rounded-3xl bg-surface-raised px-3 py-2 text-sm">
+            <div className="ml-auto w-fit max-w-[85%] min-w-[240px] rounded-3xl bg-surface-raised px-3 py-2 text-sm">
                 <textarea
                     ref={textareaRef}
                     value={draft}
@@ -120,28 +142,56 @@ export function UserMessage({ content, onEdit }: UserMessageProps) {
                 )}
             </div>
 
-            {/* Hover actions — hidden by default, revealed on hover over the message */}
-            <div className="mt-1 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/message:opacity-100">
-                <button
-                    onClick={handleCopy}
-                    aria-label="Copy message"
-                    className="flex h-6 w-6 items-center justify-center rounded-full text-foreground-muted hover:bg-neutral-800/60 hover:text-foreground"
-                >
-                    {copied ? (
-                        <Check className="h-3.5 w-3.5 text-success" />
-                    ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                    )}
-                </button>
-                {onEdit && (
+            {/* Actions row: pager (if this message has sibling versions,
+                always visible — it's informative, not just a hover
+                affordance) + copy/edit (hover-revealed, as before). */}
+            <div className="mt-1 flex items-center gap-1">
+                {pager && (
+                    <div className="flex items-center gap-0.5 rounded-full bg-neutral-800/60 px-1 py-0.5 text-[11px] text-foreground-muted">
+                        <button
+                            onClick={() => pager.onNavigate("prev")}
+                            disabled={pager.position <= 1}
+                            aria-label="Previous version"
+                            className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-neutral-700/60 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+                        >
+                            <ChevronLeft className="h-3 w-3" />
+                        </button>
+                        <span className="px-0.5 tabular-nums">
+                            {pager.position}/{pager.total}
+                        </span>
+                        <button
+                            onClick={() => pager.onNavigate("next")}
+                            disabled={pager.position >= pager.total}
+                            aria-label="Next version"
+                            className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-neutral-700/60 hover:text-foreground disabled:opacity-30 disabled:hover:bg-transparent"
+                        >
+                            <ChevronRight className="h-3 w-3" />
+                        </button>
+                    </div>
+                )}
+
+                <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/message:opacity-100">
                     <button
-                        onClick={startEdit}
-                        aria-label="Edit message"
+                        onClick={handleCopy}
+                        aria-label="Copy message"
                         className="flex h-6 w-6 items-center justify-center rounded-full text-foreground-muted hover:bg-neutral-800/60 hover:text-foreground"
                     >
-                        <Pencil className="h-3.5 w-3.5" />
+                        {copied ? (
+                            <Check className="h-3.5 w-3.5 text-success" />
+                        ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                        )}
                     </button>
-                )}
+                    {onEdit && (
+                        <button
+                            onClick={startEdit}
+                            aria-label="Edit message"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-foreground-muted hover:bg-neutral-800/60 hover:text-foreground"
+                        >
+                            <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
