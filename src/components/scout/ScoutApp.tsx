@@ -54,6 +54,23 @@ type Phase =
   | "stopped"
   | "done";
 
+// Rotating copy for the "thinking" indicator — small polish so it
+// doesn't feel like a static, repeated label every time. Picked once
+// per phase-transition-into-"thinking" (see the `thinkingMessage` memo
+// below), not re-rolled on every render.
+const THINKING_MESSAGES = [
+  "ScoutAI is thinking...",
+  "Scouting locations...",
+  "One moment...",
+  "Finding the perfect spot...",
+] as const;
+
+function pickRandomThinkingMessage(): string {
+  return THINKING_MESSAGES[
+    Math.floor(Math.random() * THINKING_MESSAGES.length)
+  ];
+}
+
 const EMPTY_SLOTS: SlotState = {
   description: "",
   mood: "",
@@ -109,6 +126,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   };
   const [phase, setPhase] = useState<Phase>("intro");
+  // Re-rolled every time something transitions phase to "thinking"
+  // (see setThinkingPhase below) so the indicator varies per wait
+  // rather than showing the same string every time or re-randomizing
+  // pointlessly on every render while already thinking.
+  const [thinkingMessage, setThinkingMessage] = useState<string>(
+    THINKING_MESSAGES[0],
+  );
+  function setThinkingPhase() {
+    setThinkingMessage(pickRandomThinkingMessage());
+    setPhase("thinking");
+  }
   const [introText, setIntroText] = useState("");
   const [userHasEdited, setUserHasEdited] = useState(false);
 
@@ -331,6 +359,14 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     setError(null);
     wasStoppedRef.current = false;
     stoppedDuringRef.current = "clarify";
+    // Must happen synchronously, before the await below — this is what
+    // was missing before. Without it, `phase` stays whatever it was
+    // (often still "intro" right after hydration) for the entire
+    // /api/clarify round trip, and no render branch in this file
+    // matches "history has content but phase is intro" — that gap
+    // between tree hydrating and phase catching up was the empty
+    // input area / missing "thinking" indicator bug.
+    setThinkingPhase();
     const controller = new AbortController();
     abortControllerRef.current = controller;
     try {
@@ -416,15 +452,14 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   });
 
   /**
-   * Edits a past user message at the given history index. Today this is
-   * non-branching: everything after that message is discarded and the
-   * conversation re-runs from the edited point, exactly like a fresh
-   * follow-up. Slots are reset and re-derived by the model from the
+   * Edits a past user message at the given history index. The edited
+   * message becomes a new sibling branch under its original parent (see
+   * conversationTree.ts) and immediately becomes the active branch, so
+   * the UI shows the edit taking effect right away. The previous
+   * version is NOT discarded — it remains reachable via the pager ("<
+   * N/M >") rendered by UserMessage whenever a node has sibling
+   * versions. Slots are reset and re-derived by the model from the
    * truncated history, since we don't keep per-turn slot snapshots.
-   *
-   * TODO (#4): replace this with real branching — keep the discarded
-   * tail as an inactive branch instead of deleting it, and add the
-   * ChatGPT-style "1/2 <>" pager to switch between versions.
    */
   function handleEditMessage(index: number, newContent: string) {
     // Abort anything in flight from the old branch before starting fresh
@@ -1442,7 +1477,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     ) && (
                       <div className="flex items-center gap-2 text-xs text-foreground-muted">
                         <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
-                        ScoutAI is thinking...
+                        {thinkingMessage}
                       </div>
                     )}
 
@@ -1614,7 +1649,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             <div className="flex items-center gap-2 p-2.5">
                               <div className="h-10 flex-1 rounded-lg bg-transparent px-2 text-sm text-foreground-muted flex items-center">
                                 {phase === "thinking"
-                                  ? "ScoutAI is thinking..."
+                                  ? thinkingMessage
                                   : "Researching locations..."}
                               </div>
                               <button
@@ -1761,7 +1796,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
           </div>
 
           {rightPaneView === "scout" ? (
-            <div className="flex h-[60vh] flex-col items-center justify-center text-center text-sm text-neutral-500">
+            <div
+              key="scout-placeholder"
+              className="flex min-h-[50vh] flex-1 flex-col items-center justify-center text-center text-sm text-neutral-500 transition-opacity duration-300"
+            >
               <p className="max-w-xs">
                 The interactive Scout map view is coming soon — this is
                 where you&apos;ll explore locations visually as you describe
