@@ -3,18 +3,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { motion } from "framer-motion";
 import { compressToEncodedURIComponent } from "lz-string";
-import { SuggestionPanel } from "@/components/scout/SuggestionPanel";
-import { ViewToggle, RightPaneView } from "@/components/scout/ViewToggle";
 import { Button } from "@/components/ui/button";
 import { ArrowUp, Check, Copy } from "lucide-react";
 import BorderGlow from "@/components/scout/BorderGlow";
 import { QuestionCard } from "@/components/scout/QuestionCard";
-import { AgentTrace } from "@/components/scout/AgentTrace";
 import { ActivityPill } from "@/components/scout/ActivityPill";
+import { ResultsPanel } from "@/components/scout/ResultsPanel";
 import { LatestRunIndicator } from "@/components/scout/LatestRunIndicator";
-import { LocationCard } from "@/components/scout/LocationCard";
-import { SkeletonCard } from "@/components/scout/SkeletonCard";
 import { UserMessage } from "@/components/scout/UserMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
 import { useTypewriter } from "@/lib/useTypewriter";
@@ -195,7 +192,38 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   const [runs, setRuns] = useState<ScoutRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [rightPaneView, setRightPaneView] = useState<RightPaneView>("scout");
+
+  // --- Right panel state (idle / focused agent activity / cards) ---
+  // The run currently tracked by the top-left mini pill. Set the
+  // instant a run starts (see dispatchScout); cleared the instant that
+  // run's cards are opened for the first time — NOT merely when the
+  // run finishes. This is what makes the pill "disappear once its
+  // cards are opened, dropdown is the way back" behavior work: once
+  // cleared, no mini pill renders for that run ever again, even though
+  // it's still fully reachable via runHistorySelectedId + the dropdown.
+  const [inFlightRunId, setInFlightRunId] = useState<string | null>(null);
+  // Non-null while the user has expanded the mini pill into the
+  // blurred-behind, focused AgentTrace view.
+  const [focusedRunId, setFocusedRunId] = useState<string | null>(null);
+  // Which completed run's cards are currently shown on the right.
+  // Null = idle placeholder. This is intentionally separate from
+  // `activeRunId` (which drives the LEFT chat's ActivityPill highlight
+  // and legacy indicators below) so the right panel can be dismissed
+  // back to idle without disturbing which run is "active" in the chat.
+  const [rightPanelRunId, setRightPanelRunId] = useState<string | null>(null);
+
+  const inFlightRun = runs.find((r) => r.id === inFlightRunId) ?? null;
+
+  function openRunCards(runId: string) {
+    setRightPanelRunId(runId);
+    setActiveRunId(runId);
+    setFocusedRunId(null);
+    // Clear the mini pill permanently for this run once its cards have
+    // been opened at least once — dropdown/in-chat pill are the way
+    // back to it after this point.
+    setInFlightRunId((prev) => (prev === runId ? null : prev));
+  }
+
   const [error, setError] = useState<string | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isFollowingUp, setIsFollowingUp] = useState(false);
@@ -226,6 +254,38 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }>({ finalSlots: EMPTY_SLOTS });
   const hasStarted = phase !== "intro";
   const hydratedRef = useRef(false);
+  // Mirrors hydratedRef as real state (not just a ref) specifically so
+  // the save-effect below can depend on it directly and is guaranteed
+  // to re-run exactly once hydration finishes — a ref mutation alone
+  // doesn't reliably re-trigger a dependent effect if no other dep in
+  // that effect happens to change at the same tick.
+  const [hasHydrated, setHasHydrated] = useState(false);
+
+  // Persist which run's cards are open on the right panel so a refresh
+  // restores the same card instead of dropping back to idle.
+  // Deliberately separate from the main saveChatState/loadChatState
+  // path (see hydration effect above/below) — this is transient UI
+  // state, not conversation data, and doesn't need Supabase sync.
+  // Gated on hasHydrated (not just chatId) so it can never fire before
+  // the restore read has actually happened — otherwise the very first
+  // render's default `rightPanelRunId = null` could race ahead and
+  // clear a value that hasn't been restored yet.
+  //
+  // Writes an explicit "__dismissed__" sentinel (not just deleting the
+  // key) when the user closes the panel via the ✕ button, so restore
+  // can tell "explicitly dismissed, stay idle" apart from "never
+  // opened anything, fall back to most recent run" — a missing key and
+  // a deliberately-cleared one would otherwise look identical.
+  useEffect(() => {
+    if (!chatId || !hasHydrated) return;
+    try {
+      const key = `scout:rightPanelRunId:${chatId}`;
+      window.localStorage.setItem(key, rightPanelRunId ?? "__dismissed__");
+    } catch {
+      // Non-fatal — storage can be unavailable (private mode, quota).
+    }
+  }, [chatId, hasHydrated, rightPanelRunId]);
+
 
   // askForNextQuestion is defined further down in the component (it's
   // large and depends on several handlers below it). The hydration
@@ -263,6 +323,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     if (!chatId) return;
     const targetId = chatId;
     let isCancelled = false;
+    // Re-gate the persistence save-effect for the NEW chat until this
+    // hydration pass actually finishes — otherwise, if the user is
+    // switching between two already-loaded chats client-side (no full
+    // page reload), the previous chat's `hasHydrated = true` would
+    // stay true and let the save-effect fire against the new chatId
+    // using the old, not-yet-restored rightPanelRunId value.
+    setHasHydrated(false);
 
     async function loadState(id: string) {
       let stored: ReturnType<typeof loadChatState> = null;
@@ -280,6 +347,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
       if (isCancelled) return;
       hydratedRef.current = true;
+      setHasHydrated(true);
 
       if (!stored || !stored.history || stored.history.length === 0) {
         setTree(createEmptyTree());
@@ -292,6 +360,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         setError(null);
         setFollowUpText("");
         setIntroText("");
+        setRightPanelRunId(null);
         return;
       }
 
@@ -305,6 +374,45 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       setActiveRunId(
         stored.runs?.length ? stored.runs[stored.runs.length - 1].id : null,
       );
+
+      // Restore which run's cards were open on the right panel.
+      // Distinguishes three cases via the localStorage value:
+      //  - a real run id that still exists → restore those cards
+      //  - the "__dismissed__" sentinel → user explicitly closed the
+      //    panel before refreshing; respect that and stay idle
+      //  - missing entirely (key never written — a chat that's never
+      //    had its panel touched, e.g. loaded from Supabase/another
+      //    device) → fall back to the most recent completed run
+      //    (mirrors activeRunId above, set from `stored.runs` directly)
+      //    so a fresh load still lands somewhere useful instead of a
+      //    blank panel.
+      const mostRecentCompletedRun = [...(stored.runs ?? [])]
+        .reverse()
+        .find((r) => r.packet);
+      let restoredRightPanelRunId: string | null = null;
+      try {
+        const key = `scout:rightPanelRunId:${id}`;
+        const saved =
+          typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
+
+        if (saved === "__dismissed__") {
+          restoredRightPanelRunId = null;
+        } else if (saved && stored.runs?.some((r) => r.id === saved && r.packet)) {
+          restoredRightPanelRunId = saved;
+        } else if (saved === null) {
+          // Key never written for this chat — safe default.
+          restoredRightPanelRunId = mostRecentCompletedRun?.id ?? null;
+        } else {
+          // Saved id points at a run that no longer exists/has no
+          // packet — safest to fall back rather than show nothing.
+          restoredRightPanelRunId = mostRecentCompletedRun?.id ?? null;
+        }
+      } catch {
+        // localStorage can throw in some environments (private mode,
+        // disabled storage) — fall back to most-recent rather than idle.
+        restoredRightPanelRunId = mostRecentCompletedRun?.id ?? null;
+      }
+      setRightPanelRunId(restoredRightPanelRunId);
 
       if (stored.runs?.some((r) => r.packet)) {
         setPhase("done");
@@ -705,6 +813,11 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
     setRuns((prev) => [...prev, initialRun]);
     setActiveRunId(runId);
+    // New run becomes the one tracked by the top-left mini pill —
+    // resets/replaces whatever the pill was previously tracking, per
+    // spec ("when a NEW run starts, [pill] resets to track the new
+    // one").
+    setInFlightRunId(runId);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -1120,8 +1233,18 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   // ---------- CONVERSATION VIEW ----------
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
-      <div className="relative z-50">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="flex h-screen flex-col overflow-hidden"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative z-50"
+      >
         <AppHeader
           title={title}
           actions={
@@ -1212,7 +1335,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             onRefreshProfile={refreshProfile}
           />
         )}
-      </div>
+      </motion.div>
 
       {shareDialog && (
         <div
@@ -1358,6 +1481,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+                  <motion.div
+                    key={chatId ?? "landing"}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="space-y-4"
+                  >
                   {/* Merged message and activity stream */}
                   {activePathNodes.map((node, i) => {
                     const run = runs.find(
@@ -1365,8 +1495,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         r.triggerMessageIndex === i &&
                         r.triggerMessageContent === node.content,
                     );
-                    const isLatestRun =
-                      run && run.id === runs[runs.length - 1]?.id;
                     const isActive = run ? activeRunId === run.id : false;
 
                     const siblingInfo = getSiblingInfo(tree, node.id);
@@ -1414,18 +1542,22 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                           </div>
                         )}
 
-                        {run &&
-                          (isLatestRun &&
-                          (phase === "running" || phase === "thinking") &&
-                          !run.packet ? (
-                            <AgentTrace key={run.id} steps={run.steps} />
-                          ) : (
-                            <div key={run.id} className="space-y-2">
-                              <ActivityPill
-                                run={run}
-                                isActive={isActive}
-                                onClick={() => setActiveRunId(run.id)}
-                              />
+                        {/* Agent activity now lives exclusively on the right
+                            panel (mini pill + focused overlay) — the left
+                            chat stream only ever shows the ActivityPill
+                            summary, whether the run is still going or
+                            already done. Clicking it opens that run's
+                            cards on the right (or, if a NEW in-flight run
+                            is currently tracked elsewhere, just switches
+                            which run's cards are shown — it never blocks
+                            on the newer run). */}
+                        {run && (
+                          <div key={run.id} className="space-y-2">
+                            <ActivityPill
+                              run={run}
+                              isActive={isActive}
+                              onClick={() => openRunCards(run.id)}
+                            />
 
                               {run.packet && (
                                 <div className="rounded-lg border border-border bg-surface p-3.5">
@@ -1466,7 +1598,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 </div>
                               )}
                             </div>
-                          ))}
+                          )}
                       </div>
                     );
                   })}
@@ -1486,6 +1618,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                       {error}
                     </div>
                   )}
+                  </motion.div>
                 </div>
 
                 {/* ---- Input area: exactly one block renders at a time, and the
@@ -1790,75 +1923,20 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-8 py-8">
-          <div className="mb-6 flex justify-center">
-            <ViewToggle value={rightPaneView} onChange={setRightPaneView} />
-          </div>
-
-          {rightPaneView === "scout" ? (
-            <div
-              key="scout-placeholder"
-              className="flex min-h-[50vh] flex-1 flex-col items-center justify-center text-center text-sm text-neutral-500 transition-opacity duration-300"
-            >
-              <p className="max-w-xs">
-                The interactive Scout map view is coming soon — this is
-                where you&apos;ll explore locations visually as you describe
-                your scene.
-              </p>
-            </div>
-          ) : (
-            (() => {
-              const active = runs.find((r) => r.id === activeRunId);
-
-              if (!active) {
-                return phase !== "thinking" && phase !== "running" ? (
-                  <SuggestionPanel
-                    onSelect={(text) => {
-                      if (
-                        phase === "clarifying" &&
-                        currentQuestion?.type === "text"
-                      ) {
-                        setSuggestionPrefill(text);
-                      } else if (phase === "stopped") {
-                        setFollowUpText(text);
-                      } else if (history.length === 0) {
-                        setFollowUpText(text);
-                        setIntroText(text);
-                      } else {
-                        setFollowUpText(text);
-                      }
-                    }}
-                  />
-                ) : null;
-              }
-
-              if (!active.packet) {
-                return (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <SkeletonCard />
-                    <SkeletonCard />
-                    <SkeletonCard />
-                    <SkeletonCard />
-                  </div>
-                );
-              }
-
-              return (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {active.packet.locations.map((loc, i) => (
-                    <div
-                      key={loc.id}
-                      className="max-h-[calc(100vh-4rem)] overflow-y-auto"
-                    >
-                      <LocationCard location={loc} rank={i + 1} />
-                    </div>
-                  ))}
-                </div>
-              );
-            })()
-          )}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col px-8 py-8">
+          <ResultsPanel
+            runs={runs}
+            inFlightRun={inFlightRun}
+            focusedRunId={focusedRunId}
+            selectedRunId={rightPanelRunId}
+            onOpenFocused={(runId) => setFocusedRunId(runId)}
+            onCloseFocused={() => setFocusedRunId(null)}
+            onSelectRun={(runId) => openRunCards(runId)}
+            onOpenMiniPillCards={(runId) => openRunCards(runId)}
+            onDismissCards={() => setRightPanelRunId(null)}
+          />
         </div>
       </main>
-    </div>
+    </motion.div>
   );
 }

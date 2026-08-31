@@ -57,7 +57,7 @@ export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
       initial={{ opacity: 0, scale: 0.96, y: 12 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="flex h-full min-h-0 w-full flex-col gap-5 overflow-hidden"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col gap-5 overflow-hidden"
     >
       {/* Top area: location name + country */}
       <AnimatePresence mode="wait">
@@ -124,7 +124,7 @@ export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
         </div>
 
         {/* Right-side stats column */}
-        <div className="scrollbar-thin w-48 shrink-0 overflow-y-auto">
+        <div className="scrollbar-thin w-40 shrink-0 overflow-y-auto sm:w-44 lg:w-48">
           <LocationStats location={location} />
         </div>
       </div>
