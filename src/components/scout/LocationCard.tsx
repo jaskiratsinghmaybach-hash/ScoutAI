@@ -1,158 +1,97 @@
-"use client";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { scoreBadgeVariant } from "@/lib/utils";
+import type { Location } from "@/types";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
-import { LocationStats } from "./LocationStats";
-import { ImageryTab } from "./tabs/ImageryTab";
-import { StoryTab } from "./tabs/StoryTab";
-import { ShootTab } from "./tabs/ShootTab";
-import { AccessTab } from "./tabs/AccessTab";
-import { SourcesTab } from "./tabs/SourcesTab";
-import type { Location, ScoutingPacket } from "@/types";
-
-const TABS = ["Imagery", "Story", "Shoot", "Access", "Sources"] as const;
-type TabKey = (typeof TABS)[number];
-
-function TabContent({ tab, location }: { tab: TabKey; location: Location }) {
-  switch (tab) {
-    case "Imagery":
-      return <ImageryTab location={location} />;
-    case "Story":
-      return <StoryTab location={location} />;
-    case "Shoot":
-      return <ShootTab location={location} />;
-    case "Access":
-      return <AccessTab location={location} />;
-    case "Sources":
-      return <SourcesTab location={location} />;
-  }
-}
-
-/**
- * The full payoff-moment card. Renders one selected location from the
- * packet at a time; the 4-pill row swaps which location is selected
- * without unmounting the outer card, so tab selection persists across
- * pill switches (matches the wireframe's implied behavior — the tabs
- * are the persistent thing, the location is what changes underneath).
- *
- * Locations are re-sorted by score descending here as a safety net —
- * the pipeline is expected to already return them sorted, but nothing
- * downstream should assume that silently.
- */
-export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
-  const sortedLocations = [...packet.locations].sort(
-    (a, b) => b.score - a.score,
-  );
-  const [selectedId, setSelectedId] = useState(sortedLocations[0]?.id ?? "");
-  const [activeTab, setActiveTab] = useState<TabKey>("Imagery");
-
-  const location =
-    sortedLocations.find((l) => l.id === selectedId) ?? sortedLocations[0];
-
-  if (!location) return null;
-
+export function LocationCard({ location, rank }: { location: Location; rank: number }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.96, y: 12 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="flex h-full min-h-0 w-full flex-col gap-5 overflow-hidden"
-    >
-      {/* Top area: location name + country */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={location.id}
-          initial={{ opacity: 0, x: 8 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -8 }}
-          transition={{ duration: 0.2 }}
-        >
-          <h2 className="text-xl font-semibold text-foreground">
-            {location.name}
-          </h2>
-          <p className="mt-0.5 text-sm text-foreground-muted">
-            {location.country}
-          </p>
-        </motion.div>
-      </AnimatePresence>
-
-      <div className="flex min-h-0 flex-1 gap-5">
-        {/* Main pane: tabs + content */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          <div
-            role="tablist"
-            aria-label="Location detail"
-            className="flex shrink-0 items-center gap-1 rounded-full bg-neutral-800/60 p-1 backdrop-blur-sm"
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="font-inter text-xs text-foreground-muted">
+            {String(rank).padStart(2, "0")}
+          </div>
+          <Badge
+            variant={scoreBadgeVariant(location.score)}
+            className="font-inter shrink-0 h-7 w-7 rounded-full flex items-center justify-center p-0 text-xs"
           >
-            {TABS.map((tab) => {
-              const isActive = tab === activeTab;
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveTab(tab)}
-                  className={cn(
-                    "flex-1 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-200",
-                    isActive
-                      ? "bg-white text-black"
-                      : "text-neutral-300 hover:text-white",
-                  )}
-                >
-                  {tab}
-                </button>
-              );
-            })}
-          </div>
+            {location.score}
+          </Badge>
+        </div>
+        <h3 className="mt-1 text-lg font-semibold leading-snug">{location.name}</h3>
+        <p className="mt-0.5 text-sm text-foreground-muted">
+          {location.city}, {location.country}
+        </p>
+      </CardHeader>
 
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={`${location.id}-${activeTab}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="h-full"
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Mood fit
+            </div>
+            <p className="mt-1 text-sm leading-relaxed">{location.mood_match}</p>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Era fit
+            </div>
+            <p className="mt-1 text-sm leading-relaxed">{location.era_match}</p>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Permit
+            </div>
+            <p className="mt-1 text-sm leading-relaxed">{location.permit_info}</p>
+            {location.permit_url && (
+              <a
+                href={location.permit_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1.5 inline-block text-sm text-foreground underline underline-offset-2 hover:text-foreground-muted"
               >
-                <TabContent tab={activeTab} location={location} />
-              </motion.div>
-            </AnimatePresence>
+                Permit office →
+              </a>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Est. daily cost
+            </div>
+            <p className="mt-1 text-sm leading-relaxed">{location.avg_daily_cost}</p>
           </div>
         </div>
 
-        {/* Right-side stats column */}
-        <div className="scrollbar-thin w-48 shrink-0 overflow-y-auto">
-          <LocationStats location={location} />
-        </div>
-      </div>
+        {Array.isArray(location.past_productions) && location.past_productions.length > 0 && (
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Filmed here before
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {location.past_productions.map((p) => (
+                <Badge key={p} variant="outline">
+                  {p}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
-      {/* 4-pill location navigator */}
-      <div className="grid shrink-0 grid-cols-4 gap-2">
-        {sortedLocations.map((loc, i) => {
-          const isActive = loc.id === location.id;
-          return (
-            <button
-              key={loc.id}
-              type="button"
-              onClick={() => setSelectedId(loc.id)}
-              className={cn(
-                "min-w-0 rounded-lg border px-3 py-2 text-left text-xs font-medium transition-all duration-200",
-                isActive
-                  ? "border-white/40 bg-neutral-800 text-white"
-                  : "border-border bg-surface text-foreground-muted hover:text-foreground",
-              )}
-            >
-              <div className="truncate">{loc.name}</div>
-              <div className="mt-0.5 truncate text-[10px] text-foreground-muted">
-                #{i + 1} · {loc.score}/100
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </motion.div>
+        <div className="grid grid-cols-1 gap-4 border-t border-border pt-4 sm:grid-cols-2">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Weather
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">{location.weather_notes}</p>
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              Logistics
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-foreground-muted">{location.logistics_notes}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -8,6 +8,7 @@ const STEP_LABELS = [
   "Searching for real locations",
   "Scouting and ranking locations",
   "Writing scout's report",
+  "Gathering imagery",
 ];
 
 export function AgentTrace({ steps }: { steps: AgentStep[] }) {

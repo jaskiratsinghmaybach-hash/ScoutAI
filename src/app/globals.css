@@ -96,6 +96,23 @@
   --color-sidebar: var(--sidebar);
 }
 
+/**
+ * The app's own layout (ScoutApp's `h-screen flex` panels) is already
+ * fully self-contained and internally scrollable — every place content
+ * can overflow has its own `overflow-y-auto`. This html/body rule
+ * exists purely as a hard backstop: without it, if ANY content
+ * anywhere (a long chat message, a card mid-animation, a future
+ * addition) ever pushes past 100vh, the browser silently adds its own
+ * page-level scrollbar in both directions instead of the intended
+ * inner-panel one. Capping html/body here means that can never happen
+ * — the page itself is never scrollable, only the panels inside it.
+ */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

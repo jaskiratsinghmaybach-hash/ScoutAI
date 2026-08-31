@@ -318,6 +318,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   }
 
+  // Track previous chatId to detect when it changes (comparison-state pattern)
+  const [prevChatId, setPrevChatId] = useState<string | undefined>(chatId);
+  if (prevChatId !== chatId) {
+    setPrevChatId(chatId);
+    setHasHydrated(false);
+  }
+
   // Hydrate chat state when chatId, activeView, or user changes
   useEffect(() => {
     if (!chatId) return;
@@ -329,7 +336,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     // page reload), the previous chat's `hasHydrated = true` would
     // stay true and let the save-effect fire against the new chatId
     // using the old, not-yet-restored rightPanelRunId value.
-    setHasHydrated(false);
 
     async function loadState(id: string) {
       let stored: ReturnType<typeof loadChatState> = null;

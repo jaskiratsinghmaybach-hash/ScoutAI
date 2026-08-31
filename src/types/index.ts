@@ -16,6 +16,14 @@ export interface SceneQuery {
   priorContext?: string; // summary of previous results + follow-up request
 }
 
+export interface LocationImage {
+  url: string; // direct hotlinked image URL from Wikimedia Commons
+  title: string; // Commons file title, e.g. "File:Golden Temple.jpg"
+  author?: string; // best-effort plain-text author/photographer credit
+  license?: string; // best-effort short license string, e.g. "CC BY-SA 4.0"
+  filePageUrl: string; // link to the Commons file description page
+}
+
 export interface Location {
   id: string;
   name: string;
@@ -32,6 +40,7 @@ export interface Location {
   logistics_notes: string;
   search_sources: string[];
   image_query: string; // used to display a representative image
+  images?: LocationImage[]; // only populated for the #1-ranked location by the pipeline; every other location fetches its own via /api/images client-side — see ImageryTab.tsx
 }
 
 export interface ScoutingPacket {

@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { fetchLocationImages } from "@/lib/wikimedia";
 import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
 
@@ -216,6 +217,30 @@ Keep every line under 15 words. No fluff, no "I hope this helps," just the facts
   return await generateWithRetry(model, prompt);
 }
 
+// Step 5: Fetch the top-ranked location's photos from Wikimedia
+// Commons before returning the packet — this is the ONE fetch the
+// agent activity UI actually waits on, capped at fetchLocationImages'
+// own 3s internal timeout so the wait is short and bounded. The
+// other locations' images are deliberately NOT fetched here: this
+// pipeline runs inside a single SSE request/response that closes
+// right after the packet is sent (see /api/scout/route.ts), so
+// there's no channel left to deliver a background fetch's result once
+// the connection is gone. Locations #2+ instead fetch their own
+// images client-side via /api/images, independently, as soon as their
+// card is actually shown — see ImageryTab.tsx.
+function rankedByScore(locations: Location[]): Location[] {
+  return [...locations].sort((a, b) => b.score - a.score);
+}
+
+async function attachTopImage(locations: Location[]): Promise<Location[]> {
+  const ranked = rankedByScore(locations);
+  const top = ranked[0];
+  if (!top) return locations;
+
+  const images = await fetchLocationImages(top.image_query);
+  return locations.map((loc) => (loc.id === top.id ? { ...loc, images } : loc));
+}
+
 // Main agent orchestrator
 export async function runScoutAgent(
   query: SceneQuery,
@@ -281,9 +306,29 @@ export async function runScoutAgent(
     status: "done",
   });
 
+  // Step 5 — only the top-ranked (#1) location's images are fetched
+  // and awaited here; see attachTopImage's doc comment above for why.
+  onStep({
+    step: 5,
+    action: "Gathering imagery",
+    detail: "Fetching the top result's photos from Wikimedia Commons...",
+    status: "running",
+  });
+  const locationsWithTopImage = await attachTopImage(locations);
+  const topLocation = rankedByScore(locationsWithTopImage)[0];
+  const topFound = (topLocation?.images?.length ?? 0) > 0;
+  onStep({
+    step: 5,
+    action: "Gathering imagery",
+    detail: topFound
+      ? `Found photos for ${topLocation!.name}`
+      : "No photos found for the top result — others will load in as you view them",
+    status: "done",
+  });
+
   return {
     query,
-    locations,
+    locations: locationsWithTopImage,
     agent_reasoning: reasoning,
     generated_at: new Date().toISOString(),
   };
