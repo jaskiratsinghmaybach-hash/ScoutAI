@@ -9,8 +9,8 @@ const STEP_LABELS = [
   "Analyzing scene requirements",
   "Searching for real locations",
   "Scouting and ranking locations",
+  "Verifying locations are real",
   "Writing scout's report",
-  "Gathering imagery",
 ];
 
 /**
@@ -76,7 +76,7 @@ export function AgentActivityMiniPill({
           />
         )}
       </AnimatePresence>
-      <span className="max-w-45 truncate font-mono">
+      <span className="max-w-[180px] truncate font-mono">
         {isDone ? "Ready — view locations" : label}
       </span>
     </motion.button>

@@ -16,14 +16,6 @@ export interface SceneQuery {
   priorContext?: string; // summary of previous results + follow-up request
 }
 
-export interface LocationImage {
-  url: string; // direct hotlinked image URL from Wikimedia Commons
-  title: string; // Commons file title, e.g. "File:Golden Temple.jpg"
-  author?: string; // best-effort plain-text author/photographer credit
-  license?: string; // best-effort short license string, e.g. "CC BY-SA 4.0"
-  filePageUrl: string; // link to the Commons file description page
-}
-
 export interface Location {
   id: string;
   name: string;
@@ -39,8 +31,8 @@ export interface Location {
   weather_notes: string;
   logistics_notes: string;
   search_sources: string[];
-  image_query: string; // used to display a representative image
-  images?: LocationImage[]; // only populated for the #1-ranked location by the pipeline; every other location fetches its own via /api/images client-side — see ImageryTab.tsx
+  image_query: string; // no longer displayed (Imagery tab removed) — kept so Gemini's existing output schema doesn't need a parallel schema change
+  scene_description: string; // environment/setting description — what the place looks and feels like to shoot in, shown on the Scene tab
 }
 
 export interface ScoutingPacket {
@@ -48,6 +40,12 @@ export interface ScoutingPacket {
   locations: Location[];
   agent_reasoning: string;
   generated_at: string;
+  // Set only when locations.length ends up below the usual 4 because
+  // one or more candidates couldn't be confirmed as real, findable
+  // places during verification (see agent.ts's filterToRealLocations).
+  // Shown in the UI in place of a silently-smaller result, so the
+  // shortfall reads as an honest constraint rather than a bug.
+  narrowing_note?: string;
 }
 
 export interface AgentStep {

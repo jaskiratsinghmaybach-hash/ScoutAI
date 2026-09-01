@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgentStep } from "@/types";
 
@@ -7,8 +8,8 @@ const STEP_LABELS = [
   "Analyzing scene requirements",
   "Searching for real locations",
   "Scouting and ranking locations",
+  "Verifying locations are real",
   "Writing scout's report",
-  "Gathering imagery",
 ];
 
 export function AgentTrace({ steps }: { steps: AgentStep[] }) {
@@ -31,12 +32,14 @@ export function AgentTrace({ steps }: { steps: AgentStep[] }) {
               <span
                 className={cn(
                   "mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
-                  status === "done" && "border-success text-success",
+                  status === "done" && "border-success bg-success/15",
                   status === "running" && "border-foreground-muted animate-pulse",
                   status === "pending" && "border-border"
                 )}
               >
-                {status === "done" ? "✓" : ""}
+                {status === "done" && (
+                  <Check className="h-2.5 w-2.5 text-success" strokeWidth={3} />
+                )}
               </span>
               <div>
                 <div className={status === "pending" ? "text-foreground-muted" : "text-foreground"}>

@@ -1,5 +1,4 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { fetchLocationImages } from "@/lib/wikimedia";
 import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
 
@@ -131,6 +130,7 @@ function normalizeLocations(raw: unknown): Location[] {
         ? loc.search_sources
         : [],
       image_query: loc.image_query ?? `${loc.name ?? ""} ${loc.city ?? ""}`,
+      scene_description: loc.scene_description ?? "",
     };
   });
 }
@@ -175,7 +175,8 @@ Return a JSON array of exactly 4 location objects. Each must include:
   "weather_notes": "Best season, weather considerations",
   "logistics_notes": "Crew access, nearby facilities",
   "search_sources": ["source url 1", "source url 2"],
-  "image_query": "Specific search query to find a representative photo"
+  "image_query": "Specific search query to find a representative photo",
+  "scene_description": "2-3 sentences describing the physical environment and setting itself — what it actually looks and feels like on the ground (architecture, lighting, textures, surroundings, ambient sound/activity). This is about the PLACE, not why it fits the brief (that's mood_match/era_match) and not shooting logistics (that's logistics_notes) — describe it the way a scout would describe the location to a director who has never seen it."
 }
 Before assigning scores, explicitly compare each location against every stated requirement (mood, era, budget fit, region, special requirements) and penalize mismatches or unknowns. Scores should genuinely differ across the 4 locations based on real fit differences — avoid clustering all scores in the 80s-90s range.
 Base your response on the actual search data. Only return the JSON array.`;
@@ -191,11 +192,84 @@ Base your response on the actual search data. Only return the JSON array.`;
   }
 }
 
-// Step 4: Generate agent reasoning summary
+// Step 4: Verify each candidate location is a real, findable place —
+// not merely that its cited FACTS (permits, cost) trace to search
+// results, but that its IDENTITY itself does. synthesizeLocations'
+// prompt only guards the former; a generic-sounding but well-supported
+// description ("Suburban Home with Bright Kitchen") can still slip
+// through as a synthesized composite rather than one real property.
+// This step runs one targeted Parallel search per candidate — its
+// name/city/country specifically, not the broad scene-description
+// queries from Step 2 — then has Gemini judge, in one batched call
+// across all candidates, whether each one is actually confirmed by
+// real results (a specific address, business listing, review site,
+// news mention) versus unconfirmed/generic. Runs in parallel per
+// location (Promise.all), so latency is roughly one search's worth,
+// not one per location sequentially.
+async function verifyLocationExists(location: Location): Promise<string> {
+  const query = `"${location.name}" ${location.city} ${location.country} address location`;
+  return parallelSearch(query);
+}
+
+async function filterToRealLocations(locations: Location[]): Promise<Location[]> {
+  if (locations.length === 0) return locations;
+
+  const verificationResults = await Promise.all(
+    locations.map((loc) => verifyLocationExists(loc)),
+  );
+
+  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+
+  const context = locations
+    .map(
+      (loc, i) =>
+        `LOCATION ${i}: "${loc.name}", ${loc.city}, ${loc.country}\nVERIFICATION SEARCH RESULTS:\n${verificationResults[i]}`,
+    )
+    .join("\n\n---\n\n");
+
+  const prompt = `You are verifying whether film location candidates are REAL, findable places — not judging whether they're good filming locations, only whether they genuinely exist.
+
+For each location below, its own targeted verification search results are provided. Decide if those results actually confirm this is a real, specific, findable place (e.g. a named business, an address, a review/listing site entry, a news mention of this specific place) — versus generic/irrelevant results, or results about a different, unrelated place, which means this location could not be confirmed as real.
+
+Be strict: a location described only in vague, composite terms ("Suburban Home with Bright Kitchen") with no verification results actually naming or confirming that specific property is NOT verified, even if the results contain other real-sounding content nearby.
+
+${context}
+
+Return a JSON array of ${locations.length} booleans, in the same order as the locations above (index 0 first) — true if verified real, false if not confirmed. Only return the JSON array, nothing else. Example: [true, false, true, true]`;
+
+  try {
+    const text = await generateWithRetry(model, prompt);
+    const cleaned = text.replace(/```json|```/g, "").trim();
+    const verdicts = JSON.parse(cleaned) as unknown;
+
+    if (!Array.isArray(verdicts) || verdicts.length !== locations.length) {
+      // Malformed judgment — fail safe by keeping nothing unverified
+      // rather than guessing which ones passed.
+      console.error("Location verification returned unexpected shape:", verdicts);
+      return [];
+    }
+
+    return locations.filter((_, i) => verdicts[i] === true);
+  } catch (err) {
+    console.error("Location verification failed:", err);
+    // Fail safe: if verification itself breaks, don't show unverified
+    // locations rather than silently falling back to "show everything."
+    return [];
+  }
+}
+
+// Step 5: Generate agent reasoning summary
 async function generateReasoning(
   query: SceneQuery,
   locations: Location[]
 ): Promise<string> {
+  if (locations.length === 0) {
+    // Nothing survived verification — there's no top pick to summarize.
+    // Handled by the orchestrator's narrowing_note in this case; this
+    // is just a safe fallback so a summary string always exists.
+    return "No locations could be confirmed as real, findable places for this search.";
+  }
+
   const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const prompt = `As a film location scout, summarize your findings for this scene in a tight, scannable format.
@@ -215,30 +289,6 @@ Return your response in this exact format, nothing else:
 Keep every line under 15 words. No fluff, no "I hope this helps," just the facts a busy filmmaker needs at a glance.`;
 
   return await generateWithRetry(model, prompt);
-}
-
-// Step 5: Fetch the top-ranked location's photos from Wikimedia
-// Commons before returning the packet — this is the ONE fetch the
-// agent activity UI actually waits on, capped at fetchLocationImages'
-// own 3s internal timeout so the wait is short and bounded. The
-// other locations' images are deliberately NOT fetched here: this
-// pipeline runs inside a single SSE request/response that closes
-// right after the packet is sent (see /api/scout/route.ts), so
-// there's no channel left to deliver a background fetch's result once
-// the connection is gone. Locations #2+ instead fetch their own
-// images client-side via /api/images, independently, as soon as their
-// card is actually shown — see ImageryTab.tsx.
-function rankedByScore(locations: Location[]): Location[] {
-  return [...locations].sort((a, b) => b.score - a.score);
-}
-
-async function attachTopImage(locations: Location[]): Promise<Location[]> {
-  const ranked = rankedByScore(locations);
-  const top = ranked[0];
-  if (!top) return locations;
-
-  const images = await fetchLocationImages(top.image_query);
-  return locations.map((loc) => (loc.id === top.id ? { ...loc, images } : loc));
 }
 
 // Main agent orchestrator
@@ -283,53 +333,61 @@ export async function runScoutAgent(
     detail: "Gemini Pro is synthesizing research into scouting packets...",
     status: "running",
   });
-  const locations = await synthesizeLocations(query, searchResults);
+  const candidateLocations = await synthesizeLocations(query, searchResults);
   onStep({
     step: 3,
     action: "Scouting and ranking locations",
-    detail: `Found ${locations.length} candidate locations`,
+    detail: `Found ${candidateLocations.length} candidate locations`,
     status: "done",
   });
 
-  // Step 4
+  // Step 4 — verify each candidate is a real, findable place before
+  // it's ever shown. See filterToRealLocations' doc comment for why
+  // this is separate from and stricter than synthesizeLocations' own
+  // "only use real facts" instruction.
   onStep({
     step: 4,
+    action: "Verifying locations are real",
+    detail: `Confirming ${candidateLocations.length} locations actually exist...`,
+    status: "running",
+  });
+  const locations = await filterToRealLocations(candidateLocations);
+  const droppedCount = candidateLocations.length - locations.length;
+  onStep({
+    step: 4,
+    action: "Verifying locations are real",
+    detail:
+      droppedCount > 0
+        ? `Confirmed ${locations.length}/${candidateLocations.length} — dropped ${droppedCount} unverified`
+        : `All ${locations.length} locations confirmed real`,
+    status: "done",
+  });
+
+  // Step 5
+  onStep({
+    step: 5,
     action: "Writing scout's report",
     detail: "Generating professional reasoning summary...",
     status: "running",
   });
   const reasoning = await generateReasoning(query, locations);
   onStep({
-    step: 4,
+    step: 5,
     action: "Writing scout's report",
     detail: "Scouting packet complete",
     status: "done",
   });
 
-  // Step 5 — only the top-ranked (#1) location's images are fetched
-  // and awaited here; see attachTopImage's doc comment above for why.
-  onStep({
-    step: 5,
-    action: "Gathering imagery",
-    detail: "Fetching the top result's photos from Wikimedia Commons...",
-    status: "running",
-  });
-  const locationsWithTopImage = await attachTopImage(locations);
-  const topLocation = rankedByScore(locationsWithTopImage)[0];
-  const topFound = (topLocation?.images?.length ?? 0) > 0;
-  onStep({
-    step: 5,
-    action: "Gathering imagery",
-    detail: topFound
-      ? `Found photos for ${topLocation!.name}`
-      : "No photos found for the top result — others will load in as you view them",
-    status: "done",
-  });
-
   return {
     query,
-    locations: locationsWithTopImage,
+    locations,
     agent_reasoning: reasoning,
     generated_at: new Date().toISOString(),
+    narrowing_note:
+      locations.length < candidateLocations.length
+        ? locations.length === 0
+          ? "These search requirements are too niche to confirm any real filming locations — try broadening the scene, mood, or region."
+          : "These search requirements are too niche to confirm more real filming locations — showing only the ones that could be verified."
+        : undefined,
   };
 }

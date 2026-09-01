@@ -2,24 +2,22 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationStats } from "./LocationStats";
-import { ImageryTab } from "./tabs/ImageryTab";
-import { StoryTab } from "./tabs/StoryTab";
+import { SceneTab } from "./tabs/SceneTab";
 import { ShootTab } from "./tabs/ShootTab";
 import { AccessTab } from "./tabs/AccessTab";
 import { SourcesTab } from "./tabs/SourcesTab";
 import type { Location, ScoutingPacket } from "@/types";
 
-const TABS = ["Imagery", "Story", "Shoot", "Access", "Sources"] as const;
+const TABS = ["Scene", "Shoot", "Access", "Sources"] as const;
 type TabKey = (typeof TABS)[number];
 
 function TabContent({ tab, location }: { tab: TabKey; location: Location }) {
   switch (tab) {
-    case "Imagery":
-      return <ImageryTab location={location} />;
-    case "Story":
-      return <StoryTab location={location} />;
+    case "Scene":
+      return <SceneTab location={location} />;
     case "Shoot":
       return <ShootTab location={location} />;
     case "Access":
@@ -31,7 +29,7 @@ function TabContent({ tab, location }: { tab: TabKey; location: Location }) {
 
 /**
  * The full payoff-moment card. Renders one selected location from the
- * packet at a time; the 4-pill row swaps which location is selected
+ * packet at a time; the pill row swaps which location is selected
  * without unmounting the outer card, so tab selection persists across
  * pill switches (matches the wireframe's implied behavior — the tabs
  * are the persistent thing, the location is what changes underneath).
@@ -39,18 +37,39 @@ function TabContent({ tab, location }: { tab: TabKey; location: Location }) {
  * Locations are re-sorted by score descending here as a safety net —
  * the pipeline is expected to already return them sorted, but nothing
  * downstream should assume that silently.
+ *
+ * Pill count is NOT assumed to be 4: agent.ts now verifies each
+ * location is a real, findable place before it ever reaches the
+ * client (see filterToRealLocations), and drops any that can't be
+ * confirmed — so packet.locations can legitimately be 1-4 long. The
+ * pill grid sizes itself to however many actually survived, and
+ * packet.narrowing_note (set only when the count dropped) is shown
+ * above the pills so a smaller result reads as an honest constraint,
+ * not a bug.
  */
 export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
   const sortedLocations = [...packet.locations].sort(
     (a, b) => b.score - a.score,
   );
   const [selectedId, setSelectedId] = useState(sortedLocations[0]?.id ?? "");
-  const [activeTab, setActiveTab] = useState<TabKey>("Imagery");
+  const [activeTab, setActiveTab] = useState<TabKey>("Scene");
 
   const location =
     sortedLocations.find((l) => l.id === selectedId) ?? sortedLocations[0];
 
-  if (!location) return null;
+  if (!location) {
+    // All candidates failed verification — narrowing_note (set by
+    // agent.ts in this exact case) carries the explanation.
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-3 px-8 text-center">
+        <AlertCircle className="h-6 w-6 text-foreground-muted" />
+        <p className="max-w-sm text-sm text-foreground-muted">
+          {packet.narrowing_note ??
+            "No locations could be confirmed as real, findable places for this search."}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -129,8 +148,19 @@ export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
         </div>
       </div>
 
-      {/* 4-pill location navigator */}
-      <div className="grid shrink-0 grid-cols-4 gap-2">
+      {packet.narrowing_note && (
+        <div className="flex shrink-0 items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground-muted">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{packet.narrowing_note}</span>
+        </div>
+      )}
+
+      {/* Location pill navigator — sized to however many locations
+          actually survived verification (1-4), never assumed to be 4 */}
+      <div
+        className="grid shrink-0 gap-2"
+        style={{ gridTemplateColumns: `repeat(${sortedLocations.length}, minmax(0, 1fr))` }}
+      >
         {sortedLocations.map((loc, i) => {
           const isActive = loc.id === location.id;
           return (
