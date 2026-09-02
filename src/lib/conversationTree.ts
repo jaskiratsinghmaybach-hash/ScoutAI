@@ -44,6 +44,14 @@ export interface MessageNode {
   role: MessageRole;
   content: string;
   createdAt: number;
+  // Present only on a user message sent via "Add to chat" / a
+  // suggestion chip — the location(s) attached at send time. Optional
+  // and additive: every existing node/serialized tree without this
+  // field remains valid (undefined reads the same as "no attachment").
+  attachedCard?: {
+    scope: "single" | "all";
+    locations: import("@/types").Location[];
+  };
 }
 
 export interface ConversationTree {
@@ -90,12 +98,16 @@ function generateNodeId(): string {
  * existing branch's "active" status. Callers that want the new sibling
  * to become active immediately (e.g. the edit flow) do so explicitly
  * via setActiveChild, same as switching to any other existing sibling.
+ *
+ * `attachedCard` is optional and additive — every existing call site
+ * that doesn't pass it behaves exactly as before.
  */
 export function addMessage(
   tree: ConversationTree,
   parentId: string | null,
   role: MessageRole,
   content: string,
+  attachedCard?: MessageNode["attachedCard"],
 ): { tree: ConversationTree; nodeId: string } {
   const id = generateNodeId();
   const resolvedParentId = parentId ?? tree.rootId;
@@ -105,6 +117,7 @@ export function addMessage(
     role,
     content,
     createdAt: Date.now(),
+    ...(attachedCard ? { attachedCard } : {}),
   };
 
   const nodes = { ...tree.nodes, [id]: node };

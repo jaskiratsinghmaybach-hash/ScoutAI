@@ -10,6 +10,8 @@ import {
     Check,
     Pencil,
 } from "lucide-react";
+import { CardReferenceChip } from "./CardReferenceChip";
+import type { Location } from "@/types";
 
 export interface MessagePagerInfo {
     /** 1-based position of this message among its siblings. */
@@ -34,9 +36,16 @@ interface UserMessageProps {
      * there's no empty pager clutter on ordinary messages.
      */
     pager?: MessagePagerInfo;
+    /**
+     * Present only when this message was sent with a card (or all
+     * cards) attached via "Add to chat" / a suggestion chip. Renders a
+     * non-editable CardReferenceChip above the message bubble — purely
+     * historical record, no interaction.
+     */
+    attachedCard?: { scope: "single" | "all"; locations: Location[] };
 }
 
-export function UserMessage({ content, onEdit, pager }: UserMessageProps) {
+export function UserMessage({ content, onEdit, pager, attachedCard }: UserMessageProps) {
     const [expanded, setExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(content);
@@ -122,6 +131,9 @@ export function UserMessage({ content, onEdit, pager }: UserMessageProps) {
 
     return (
         <div className="group/message ml-auto flex w-fit max-w-[85%] flex-col items-end">
+            {attachedCard && (
+                <CardReferenceChip scope={attachedCard.scope} locations={attachedCard.locations} />
+            )}
             <div className="rounded-3xl bg-surface-raised px-3 py-2 text-sm">
                 <p className={expanded ? "" : "line-clamp-3"}>{content}</p>
                 {isLong && (

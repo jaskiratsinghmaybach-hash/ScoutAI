@@ -2,9 +2,10 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AgentStep } from "@/types";
+import type { AgentStep, ScoutRun } from "@/types";
 
-const STEP_LABELS = [
+// "search" — a fresh scout dispatch from a scene description.
+const SEARCH_STEP_LABELS = [
   "Analyzing scene requirements",
   "Searching for real locations",
   "Scouting and ranking locations",
@@ -12,7 +13,26 @@ const STEP_LABELS = [
   "Writing scout's report",
 ];
 
-export function AgentTrace({ steps }: { steps: AgentStep[] }) {
+// "refine" — triggered by "find more like this" on a referenced card.
+// Deliberately distinct wording so it doesn't misleadingly look like a
+// brand-new, from-scratch search.
+const REFINE_STEP_LABELS = [
+  "Reviewing the referenced location",
+  "Searching for similar spots",
+  "Ranking new candidates",
+  "Verifying locations are real",
+  "Writing scout's report",
+];
+
+export function AgentTrace({
+  steps,
+  runKind = "search",
+}: {
+  steps: AgentStep[];
+  runKind?: ScoutRun["runKind"];
+}) {
+  const labels = runKind === "refine" ? REFINE_STEP_LABELS : SEARCH_STEP_LABELS;
+
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -22,7 +42,7 @@ export function AgentTrace({ steps }: { steps: AgentStep[] }) {
         </span>
       </div>
       <div className="space-y-2.5">
-        {STEP_LABELS.map((label, i) => {
+        {labels.map((label, i) => {
           const stepNum = i + 1;
           const step = steps.find((s) => s.step === stepNum);
           const status = step?.status ?? "pending";

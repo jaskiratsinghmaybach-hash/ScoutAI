@@ -11,6 +11,8 @@ import BorderGlow from "@/components/scout/BorderGlow";
 import { QuestionCard } from "@/components/scout/QuestionCard";
 import { ActivityPill } from "@/components/scout/ActivityPill";
 import { ResultsPanel } from "@/components/scout/ResultsPanel";
+import { AttachedCardChip } from "@/components/scout/AttachedCardChip";
+import { BroadSuggestions } from "@/components/scout/BroadSuggestions";
 import { LatestRunIndicator } from "@/components/scout/LatestRunIndicator";
 import { UserMessage } from "@/components/scout/UserMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
@@ -41,6 +43,7 @@ import type {
   ClarifyQuestion,
   ConversationTurn,
   ScoutRun,
+  Location,
 } from "@/types";
 
 type Phase =
@@ -154,7 +157,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   // The id of the currently-active leaf node — i.e. whichever message
   // is last in the active path. Write sites that append a new message
   // need this as the parentId for the new node.
-  const activeLeafId: string | null = activePathNodes.at(-1)?.id ?? null;
+
 
   const [slots, setSlots] = useState<SlotState>(EMPTY_SLOTS);
   const [title, setTitle] = useState<string | undefined>(undefined);
@@ -227,6 +230,15 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isFollowingUp, setIsFollowingUp] = useState(false);
+  // Card attachment state — set by "Add to chat" or a suggestion chip
+  // (either the per-card CardSuggestions dropdown or the broad
+  // BroadSuggestions row above the message box). Cleared once the
+  // message carrying it is actually sent, or if the user removes it
+  // manually via the chip's own dismiss button.
+  const [attachedCard, setAttachedCard] = useState<
+    { scope: "single" | "all"; locations: Location[] } | null
+  >(null);
+  const [isClassifyingCardChat, setIsClassifyingCardChat] = useState(false);
   const [suggestionPrefill, setSuggestionPrefill] = useState<
     string | undefined
   >(undefined);
@@ -318,26 +330,26 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   }
 
-  // Track previous chatId to detect when it changes (comparison-state pattern)
-  const [prevChatId, setPrevChatId] = useState<string | undefined>(chatId);
-  if (prevChatId !== chatId) {
-    setPrevChatId(chatId);
-    setHasHydrated(false);
-  }
-
   // Hydrate chat state when chatId, activeView, or user changes
-  useEffect(() => {
+    useEffect(() => {
     if (!chatId) return;
     const targetId = chatId;
     let isCancelled = false;
-    // Re-gate the persistence save-effect for the NEW chat until this
-    // hydration pass actually finishes — otherwise, if the user is
-    // switching between two already-loaded chats client-side (no full
-    // page reload), the previous chat's `hasHydrated = true` would
-    // stay true and let the save-effect fire against the new chatId
-    // using the old, not-yet-restored rightPanelRunId value.
 
     async function loadState(id: string) {
+      // Re-gate the persistence save-effect for the NEW chat until this
+      // hydration pass actually finishes — otherwise, if the user is
+      // switching between two already-loaded chats client-side (no full
+      // page reload), the previous chat's `hasHydrated = true` would
+      // stay true and let the save-effect fire against the new chatId
+      // using the old, not-yet-restored rightPanelRunId value.
+      //
+      // Called from inside this async function body (not synchronously
+      // in the effect above), which is the pattern
+      // react-hooks/set-state-in-effect allows — it only flags setState
+      // called synchronously in the effect body itself.
+      setHasHydrated(false);
+
       let stored: ReturnType<typeof loadChatState> = null;
 
       if (activeView === "account") {
@@ -787,6 +799,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     finalSlots: SlotState,
     prompt?: string,
     historyContext?: ConversationTurn[],
+    runKind: "search" | "refine" = "search",
   ) {
     setPhase("running");
     setError(null);
@@ -815,6 +828,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       packet: null,
       triggerMessageIndex: activeHistory.length - 1,
       triggerMessageContent: lastTurn ? lastTurn.content : "",
+      runKind,
     };
 
     setRuns((prev) => [...prev, initialRun]);
@@ -960,32 +974,121 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     setShowChatsList(false);
   }
 
-  function handleFollowUp(e: React.FormEvent) {
+  async function handleFollowUp(e: React.FormEvent) {
     e.preventDefault();
     const msg = followUpText.trim();
     if (!msg) return;
 
     setFollowUpText("");
-    setIsFollowingUp(true);
 
-    const updatedHistory: ConversationTurn[] = [
-      ...history,
-      { role: "user", content: msg },
-    ];
+    // No card attached — exactly the original behavior, unchanged.
+    if (!attachedCard) {
+      setIsFollowingUp(true);
+
+      const updatedHistory: ConversationTurn[] = [
+        ...history,
+        { role: "user", content: msg },
+      ];
+      setTree((prevTree) => {
+        const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+        return addMessage(prevTree, leafId, "user", msg).tree;
+      });
+
+      const updatedSlots = {
+        ...slots,
+        description: `${slots.description} | Follow-up: ${msg}`,
+      };
+      setSlots(updatedSlots);
+
+      dispatchScout(updatedSlots, msg, updatedHistory).finally(() => {
+        setIsFollowingUp(false);
+      });
+      return;
+    }
+
+    // A card is attached — this message needs classification before
+    // anything else happens. Post the user's message to the tree
+    // immediately (with the reference chip attached to it) so it
+    // appears right away rather than waiting on the classify call.
+    const cardForThisMessage = attachedCard;
+    setAttachedCard(null);
+    setIsClassifyingCardChat(true);
+
+    let userNodeId: string | null = null;
     setTree((prevTree) => {
       const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
-      return addMessage(prevTree, leafId, "user", msg).tree;
+      const result = addMessage(prevTree, leafId, "user", msg, cardForThisMessage);
+      userNodeId = result.nodeId;
+      return result.tree;
     });
 
-    const updatedSlots = {
-      ...slots,
-      description: `${slots.description} | Follow-up: ${msg}`,
-    };
-    setSlots(updatedSlots);
+    try {
+      const res = await fetch("/api/card-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: msg,
+          scope: cardForThisMessage.scope,
+          locations: cardForThisMessage.locations,
+        }),
+      });
+      const data = (await res.json()) as {
+        intent?: "similar" | "answer";
+        answer?: string;
+        refinement_context?: string;
+        error?: string;
+      };
 
-    dispatchScout(updatedSlots, msg, updatedHistory).finally(() => {
-      setIsFollowingUp(false);
-    });
+      if (data.intent === "similar" && data.refinement_context) {
+        // "Find more like this" — run the full pipeline again, seeded
+        // with the referenced card(s) as refinement context. Reuses
+        // the existing priorContext mechanism; runKind: "refine" only
+        // changes which step labels the agent-activity UI shows.
+        const updatedHistory: ConversationTurn[] = [
+          ...history,
+          { role: "user", content: msg },
+        ];
+        const updatedSlots = {
+          ...slots,
+          description: `${slots.description} | Follow-up: ${msg}`,
+        };
+        setSlots(updatedSlots);
+        await dispatchScout(
+          updatedSlots,
+          data.refinement_context,
+          updatedHistory,
+          "refine",
+        );
+      } else if (data.intent === "answer" && data.answer) {
+        // Direct question about the referenced card — answer in chat,
+        // no new run, cards on screen untouched.
+        setTree((prevTree) => {
+          return addMessage(prevTree, userNodeId, "assistant", data.answer!).tree;
+        });
+      } else {
+        setTree((prevTree) => {
+          return addMessage(
+            prevTree,
+            userNodeId,
+            "assistant",
+            data.error ??
+              "Sorry, I couldn't work out how to respond to that — could you try rephrasing?",
+          ).tree;
+        });
+      }
+    } catch (err) {
+      console.error("card-chat request failed:", err);
+      setTree((prevTree) => {
+        return addMessage(
+          prevTree,
+          userNodeId,
+          "assistant",
+          "Sorry, something went wrong answering that — please try again.",
+        ).tree;
+      });
+    } finally {
+      setIsClassifyingCardChat(false);
+    }
   }
 
   const googleAvatar = user?.user_metadata?.avatar_url as string | undefined;
@@ -1462,7 +1565,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                       type="button"
                       onClick={handleNewChat}
                       aria-label="New chat"
-                      className="group flex h-[35px] w-[35px] items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+                      className="group flex h-8.75 w-8.75 items-center justify-center rounded-full bg-neutral-800/60 text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
                     >
                       <svg
                         className="h-4 w-4 text-neutral-400 transition-colors group-hover:text-white"
@@ -1513,6 +1616,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         {node.role === "user" ? (
                           <UserMessage
                             content={node.content}
+                            attachedCard={node.attachedCard}
                             onEdit={(newContent) =>
                               handleEditMessage(i, newContent)
                             }
@@ -1893,32 +1997,61 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         onJumpToLatest={() => setActiveRunId(latestRun.id)}
                       />
                     )}
+                    {(() => {
+                      const shownLocations =
+                        runs.find((r) => r.id === rightPanelRunId)?.packet
+                          ?.locations ?? [];
+                      return shownLocations.length > 0 ? (
+                        <div className="px-6 pb-2">
+                          <BroadSuggestions
+                            locations={shownLocations}
+                            onPick={(text) => {
+                              setAttachedCard({ scope: "all", locations: shownLocations });
+                              setFollowUpText(text);
+                            }}
+                          />
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="px-6 pb-6 pt-2">
                       <BorderGlow {...GLOW_PROPS}>
                         <form
                           onSubmit={handleFollowUp}
-                          className="flex items-center gap-2 p-2.5"
+                          className="flex flex-col gap-2 p-2.5"
                         >
-                          <input
-                            value={followUpText}
-                            onChange={(e) => setFollowUpText(e.target.value)}
-                            placeholder="Refine — 'cheaper options'..."
-                            disabled={isFollowingUp}
-                            className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:opacity-50"
-                          />
-                          <Button
-                            type="submit"
-                            disabled={
-                              followUpText.trim().length === 0 || isFollowingUp
-                            }
-                            className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
-                          >
-                            {isFollowingUp ? (
-                              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-black" />
-                            ) : (
-                              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-                            )}
-                          </Button>
+                          {attachedCard && (
+                            <div className="px-1">
+                              <AttachedCardChip
+                                scope={attachedCard.scope}
+                                locations={attachedCard.locations}
+                                onRemove={() => setAttachedCard(null)}
+                              />
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={followUpText}
+                              onChange={(e) => setFollowUpText(e.target.value)}
+                              placeholder="Type a message to continue..."
+                              disabled={isFollowingUp || isClassifyingCardChat}
+                              className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:opacity-50"
+                            />
+                            <Button
+                              type="submit"
+                              disabled={
+                                followUpText.trim().length === 0 ||
+                                isFollowingUp ||
+                                isClassifyingCardChat
+                              }
+                              className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                            >
+                              {isFollowingUp || isClassifyingCardChat ? (
+                                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-black" />
+                              ) : (
+                                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                              )}
+                            </Button>
+                          </div>
                         </form>
                       </BorderGlow>
                     </div>
@@ -1940,6 +2073,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             onSelectRun={(runId) => openRunCards(runId)}
             onOpenMiniPillCards={(runId) => openRunCards(runId)}
             onDismissCards={() => setRightPanelRunId(null)}
+            onAttachCard={(location) =>
+              setAttachedCard({ scope: "single", locations: [location] })
+            }
+            onAttachSuggestion={(location, suggestionText) => {
+              setAttachedCard({ scope: "single", locations: [location] });
+              setFollowUpText(suggestionText);
+            }}
           />
         </div>
       </main>

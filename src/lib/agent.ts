@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
 
-async function generateWithRetry(
+export async function generateWithRetry(
   model: ReturnType<typeof genAI.getGenerativeModel>,
   prompt: string,
   retries = 3
@@ -27,7 +27,7 @@ async function generateWithRetry(
 
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+export const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // Parallel Search API helper
 async function parallelSearch(query: string): Promise<string> {
@@ -243,8 +243,6 @@ Return a JSON array of ${locations.length} booleans, in the same order as the lo
     const verdicts = JSON.parse(cleaned) as unknown;
 
     if (!Array.isArray(verdicts) || verdicts.length !== locations.length) {
-      // Malformed judgment — fail safe by keeping nothing unverified
-      // rather than guessing which ones passed.
       console.error("Location verification returned unexpected shape:", verdicts);
       return [];
     }
@@ -252,8 +250,6 @@ Return a JSON array of ${locations.length} booleans, in the same order as the lo
     return locations.filter((_, i) => verdicts[i] === true);
   } catch (err) {
     console.error("Location verification failed:", err);
-    // Fail safe: if verification itself breaks, don't show unverified
-    // locations rather than silently falling back to "show everything."
     return [];
   }
 }
@@ -264,9 +260,6 @@ async function generateReasoning(
   locations: Location[]
 ): Promise<string> {
   if (locations.length === 0) {
-    // Nothing survived verification — there's no top pick to summarize.
-    // Handled by the orchestrator's narrowing_note in this case; this
-    // is just a safe fallback so a summary string always exists.
     return "No locations could be confirmed as real, findable places for this search.";
   }
 
@@ -342,9 +335,7 @@ export async function runScoutAgent(
   });
 
   // Step 4 — verify each candidate is a real, findable place before
-  // it's ever shown. See filterToRealLocations' doc comment for why
-  // this is separate from and stricter than synthesizeLocations' own
-  // "only use real facts" instruction.
+  // it's ever shown.
   onStep({
     step: 4,
     action: "Verifying locations are real",

@@ -5,10 +5,18 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ScoutRun } from "@/types";
 
-const STEP_LABELS = [
+const SEARCH_STEP_LABELS = [
   "Analyzing scene requirements",
   "Searching for real locations",
   "Scouting and ranking locations",
+  "Verifying locations are real",
+  "Writing scout's report",
+];
+
+const REFINE_STEP_LABELS = [
+  "Reviewing the referenced location",
+  "Searching for similar spots",
+  "Ranking new candidates",
   "Verifying locations are real",
   "Writing scout's report",
 ];
@@ -35,8 +43,9 @@ export function AgentActivityMiniPill({
     .filter((s) => s.status === "done")
     .sort((a, b) => b.step - a.step)[0];
   const currentStep = runningStep ?? lastDoneStep ?? run.steps[0];
+  const labels = run.runKind === "refine" ? REFINE_STEP_LABELS : SEARCH_STEP_LABELS;
   const label = currentStep
-    ? STEP_LABELS[currentStep.step - 1] ?? currentStep.action
+    ? labels[currentStep.step - 1] ?? currentStep.action
     : "Starting...";
 
   return (
@@ -76,7 +85,7 @@ export function AgentActivityMiniPill({
           />
         )}
       </AnimatePresence>
-      <span className="max-w-[180px] truncate font-mono">
+      <span className="max-w-45 truncate font-mono">
         {isDone ? "Ready — view locations" : label}
       </span>
     </motion.button>

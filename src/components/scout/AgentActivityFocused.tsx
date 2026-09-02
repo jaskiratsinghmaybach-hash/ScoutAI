@@ -22,7 +22,7 @@ export function AgentActivityFocused({ run }: { run: ScoutRun }) {
       className="absolute inset-0 z-20 flex items-center justify-center p-8"
     >
       <div className="w-full max-w-md">
-        <AgentTrace steps={run.steps} />
+        <AgentTrace steps={run.steps} runKind={run.runKind} />
       </div>
     </motion.div>
   );

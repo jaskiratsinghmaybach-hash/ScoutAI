@@ -6,10 +6,10 @@ import type { Location } from "@/types";
 /**
  * Replaces the old Imagery tab. Describes the physical environment and
  * setting itself — what the place looks and feels like — using
- * scene_description, a new field Gemini generates specifically for
- * this (see agent.ts's synthesizeLocations prompt). Deliberately
- * distinct from ShootTab: Shoot covers WHY the location fits the brief
- * and HOW to shoot there; Scene covers what the place physically is.
+ * scene_description, a field Gemini generates specifically for this
+ * (see agent.ts's synthesizeLocations prompt). Deliberately distinct
+ * from ShootTab: Shoot covers WHY the location fits the brief and HOW
+ * to shoot there; Scene covers what the place physically is.
  */
 export function SceneTab({ location }: { location: Location }) {
   const hasDescription =

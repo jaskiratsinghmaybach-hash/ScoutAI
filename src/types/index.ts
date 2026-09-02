@@ -4,6 +4,14 @@ export interface ScoutRun {
   packet: ScoutingPacket | null;
   triggerMessageIndex: number;
   triggerMessageContent: string; // safety net: exact text of the triggering message
+  // "search" = a fresh scout dispatch (normal scene description).
+  // "refine" = triggered by "find more like this" from a referenced
+  // card in chat — same pipeline, but the agent-activity UI shows a
+  // distinct set of step labels so it doesn't misleadingly look like
+  // a brand-new, from-scratch search. See AgentTrace.tsx/
+  // AgentActivityMiniPill.tsx. Defaults to "search" for older runs
+  // that predate this field (optional, not required).
+  runKind?: "search" | "refine";
 }
 
 export interface SceneQuery {
@@ -40,11 +48,11 @@ export interface ScoutingPacket {
   locations: Location[];
   agent_reasoning: string;
   generated_at: string;
-  // Set only when locations.length ends up below the usual 4 because
-  // one or more candidates couldn't be confirmed as real, findable
-  // places during verification (see agent.ts's filterToRealLocations).
-  // Shown in the UI in place of a silently-smaller result, so the
-  // shortfall reads as an honest constraint rather than a bug.
+  // Set only when locations.length ends up below what Gemini originally
+  // proposed because one or more candidates couldn't be confirmed as
+  // real, findable places during verification (see agent.ts's
+  // filterToRealLocations). Shown in the UI in place of a silently-
+  // smaller result, so the shortfall reads as an honest constraint.
   narrowing_note?: string;
 }
 
@@ -89,4 +97,15 @@ export interface ClarifyResponse {
 export interface ConversationTurn {
   role: "user" | "assistant";
   content: string;
+}
+
+// Response shape for POST /api/card-chat — see route.ts. One Gemini
+// call classifies intent AND, when the intent is "answer", produces
+// the answer itself in the same pass (kept as one call rather than
+// classify-then-answer as two, to keep latency down for what's meant
+// to be a fast, conversational follow-up).
+export interface CardChatResponse {
+  intent: "similar" | "answer";
+  answer?: string; // only present when intent === "answer"
+  refinement_context?: string; // only present when intent === "similar" — a ready-to-use priorContext string for dispatchScout
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,23 +31,32 @@ function TabContent({ tab, location }: { tab: TabKey; location: Location }) {
  * The full payoff-moment card. Renders one selected location from the
  * packet at a time; the pill row swaps which location is selected
  * without unmounting the outer card, so tab selection persists across
- * pill switches (matches the wireframe's implied behavior — the tabs
- * are the persistent thing, the location is what changes underneath).
+ * pill switches.
  *
  * Locations are re-sorted by score descending here as a safety net —
  * the pipeline is expected to already return them sorted, but nothing
  * downstream should assume that silently.
  *
- * Pill count is NOT assumed to be 4: agent.ts now verifies each
- * location is a real, findable place before it ever reaches the
- * client (see filterToRealLocations), and drops any that can't be
- * confirmed — so packet.locations can legitimately be 1-4 long. The
- * pill grid sizes itself to however many actually survived, and
- * packet.narrowing_note (set only when the count dropped) is shown
- * above the pills so a smaller result reads as an honest constraint,
- * not a bug.
+ * Pill count is NOT assumed to be 4: agent.ts verifies each location
+ * is a real, findable place before it ever reaches the client, and
+ * drops any that can't be confirmed — so packet.locations can
+ * legitimately be 1-4 long. The pill grid sizes itself to however
+ * many actually survived, and packet.narrowing_note is shown above
+ * the pills when the count dropped.
+ *
+ * Reports the currently-selected location up via onSelectedLocationChange
+ * so ResultsPanel (which renders the "Add to chat" control in its
+ * header, alongside the dismiss button) always knows which specific
+ * card the user is looking at — that's the location "Add to chat"
+ * attaches when clicked for a single-card reference.
  */
-export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
+export function LocationResultCard({
+  packet,
+  onSelectedLocationChange,
+}: {
+  packet: ScoutingPacket;
+  onSelectedLocationChange?: (location: Location | null) => void;
+}) {
   const sortedLocations = [...packet.locations].sort(
     (a, b) => b.score - a.score,
   );
@@ -56,6 +65,16 @@ export function LocationResultCard({ packet }: { packet: ScoutingPacket }) {
 
   const location =
     sortedLocations.find((l) => l.id === selectedId) ?? sortedLocations[0];
+
+  useEffect(() => {
+    onSelectedLocationChange?.(location ?? null);
+    // Only re-report when the selected location itself changes, not
+    // on every render — onSelectedLocationChange is expected to be a
+    // stable callback (useCallback/inline setState setter) from the
+    // caller, so it's deliberately excluded from deps here to avoid
+    // re-running this on every parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.id]);
 
   if (!location) {
     // All candidates failed verification — narrowing_note (set by
