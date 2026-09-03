@@ -100,8 +100,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const router = useRouter();
   const {
     user,
-    syncStatus,
-    activeView,
+      activeView,
     setActiveView,
     accountChats,
     refreshAccountChats,
@@ -1216,17 +1215,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     {headerInitial}
                   </div>
                 )}
-                <span
-                  className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
-                    syncStatus === "synced"
-                      ? "bg-emerald-400"
-                      : syncStatus === "syncing"
-                        ? "bg-amber-400 animate-pulse"
-                        : syncStatus === "pending"
-                          ? "bg-orange-400"
-                          : "bg-neutral-500"
-                  }`}
-                />
               </>
             ) : (
               "Continuity"
@@ -1416,17 +1404,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         {headerInitial}
                       </div>
                     )}
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background ${
-                        syncStatus === "synced"
-                          ? "bg-emerald-400"
-                          : syncStatus === "syncing"
-                            ? "bg-amber-400 animate-pulse"
-                            : syncStatus === "pending"
-                              ? "bg-orange-400"
-                              : "bg-neutral-500"
-                      }`}
-                    />
                   </>
                 ) : (
                   "Continuity"
