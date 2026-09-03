@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Building2,
   Check,
-  Compass,
   Film,
   MapPin,
   Sparkles,
@@ -51,8 +50,7 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
       <div aria-hidden className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-white/[0.045] blur-3xl" />
       <header className="relative flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs font-medium tracking-wide text-foreground-muted">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-foreground/[0.06] text-foreground"><Compass className="h-3.5 w-3.5" /></div>
-          <span>SCOUTAI / FIRST RUN</span>
+          <span>SCOUTAI</span>
         </div>
         <button type="button" onClick={onSkip} className="rounded-full px-3 py-1.5 text-xs font-medium text-foreground-muted transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/50">Skip setup</button>
       </header>
@@ -73,10 +71,9 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
         <AnimatePresence mode="wait">
           {step === "welcome" && (
             <motion.div key="welcome" variants={slide} initial="enter" animate="center" exit="exit" transition={{ duration: 0.28 }} className="w-full max-w-xl">
-              <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-foreground-muted"><span className="h-px w-6 bg-foreground/30" />Location intelligence for creative teams</p>
               <h1 className="max-w-lg text-balance font-display text-4xl font-semibold leading-[1.04] tracking-[-0.04em] text-foreground sm:text-5xl">Let&apos;s find the place your story needs.</h1>
               <p className="mt-5 max-w-md text-pretty text-sm leading-6 text-foreground-muted">ScoutAI turns a rough scene idea into a considered shortlist with visual fit, access notes, and sources you can trust.</p>
-              <div className="mt-8 flex flex-wrap gap-2 text-xs text-foreground-muted"><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Describe a scene</span><ArrowRight className="mt-2 h-3.5 w-3.5" /><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Get a smarter shortlist</span></div>
+              <div className="mt-[19px] flex flex-wrap gap-2 text-xs text-foreground-muted"><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Describe a scene</span><ArrowRight className="mt-2 h-3.5 w-3.5" /><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Get a smarter shortlist</span></div>
               <button type="button" onClick={() => setStep("intent")} className="mt-10 inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/60 active:scale-95">Start scouting <ArrowRight className="h-4 w-4" /></button>
             </motion.div>
           )}
