@@ -15,10 +15,9 @@ type Step = "welcome" | "intent" | "profile";
 interface OnboardingFlowProps {
   prefillName?: string | null;
   onComplete: (name: string) => void;
-  onSkip: () => void;
 }
 
-export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFlowProps) {
+export function OnboardingFlow({ prefillName, onComplete }: OnboardingFlowProps) {
   const [step, setStep] = useState<Step>("welcome");
   const [name, setName] = useState(prefillName ?? "");
   const [intent, setIntent] = useState<string | null>(null);
@@ -26,14 +25,14 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    onComplete(name.trim());
+    const trimmedName = name.trim();
+    if (trimmedName) onComplete(trimmedName);
   }
 
   return (
     <section aria-label="ScoutAI onboarding" className="relative flex h-full w-full flex-col overflow-hidden px-5 py-5 sm:px-8">
       <header className="relative flex items-center justify-between">
         <span className="text-xs font-medium tracking-wide text-foreground-muted">SCOUTAI</span>
-        <button type="button" onClick={onSkip} className="rounded-full px-3 py-1.5 text-xs font-medium text-foreground-muted transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/50">Skip setup</button>
       </header>
 
       <div className="relative mt-7 flex items-center justify-between gap-4">
