@@ -62,7 +62,7 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center py-7">
           {step === "welcome" && (
-            <div key="welcome" className="w-full max-w-xl">
+            <div key="welcome" className="mr-auto w-full max-w-xl">
               <h1 className="max-w-lg text-balance font-display text-4xl font-semibold leading-[1.04] tracking-[-0.04em] text-foreground sm:text-5xl">Let&apos;s find the place your story needs.</h1>
               <p className="mt-5 max-w-md text-pretty text-sm leading-6 text-foreground-muted">ScoutAI turns a rough scene idea into a considered shortlist with visual fit, access notes, and sources you can trust.</p>
               <div className="mt-[19px] flex flex-wrap gap-2 text-xs text-foreground-muted"><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Describe a scene</span><ArrowRight className="mt-2 h-3.5 w-3.5" /><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Get a smarter shortlist</span></div>
