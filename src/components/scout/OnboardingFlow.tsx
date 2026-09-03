@@ -107,7 +107,6 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
           )}
         </AnimatePresence>
       </div>
-      <footer className="relative flex items-center gap-2 text-[11px] text-foreground-muted"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Your workspace is ready when you are.</footer>
     </section>
   );
 }
