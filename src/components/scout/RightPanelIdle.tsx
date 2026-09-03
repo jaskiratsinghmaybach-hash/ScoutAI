@@ -84,7 +84,7 @@ export function RightPanelIdle({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative flex flex-col items-center text-center"
+        className="relative flex w-full max-w-3xl flex-col items-start text-left"
       >
         {displayName && (
           <span className="font-display mb-1.5 text-sm font-medium text-neutral-400">
@@ -111,7 +111,7 @@ export function RightPanelIdle({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08, ease: "easeOut" }}
-          className="group flex items-center gap-3 rounded-xl border border-border bg-neutral-900/60 px-4 py-3.5 text-left backdrop-blur-sm transition-all duration-200 hover:border-border-strong hover:bg-neutral-900 active:scale-[0.99]"
+          className="group flex items-center gap-3 rounded-none border border-border bg-neutral-900/60 px-4 py-3.5 text-left backdrop-blur-sm transition-all duration-200 hover:border-border-strong hover:bg-neutral-900 active:scale-[0.99]"
         >
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-800/80 text-neutral-300 transition-colors group-hover:text-white">
             <RefreshCw className="h-4 w-4" />
@@ -160,7 +160,7 @@ export function RightPanelIdle({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.16, ease: "easeOut" }}
-            className="flex flex-col rounded-xl border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
+            className="flex flex-col rounded-none border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
           >
             <div className="flex items-center gap-1.5 px-0.5">
               <History className="h-3.5 w-3.5 text-neutral-400" />
@@ -201,7 +201,7 @@ export function RightPanelIdle({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.24, ease: "easeOut" }}
-            className="flex flex-col rounded-xl border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
+            className="flex flex-col rounded-none border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
           >
             <div className="flex items-center gap-1.5 px-0.5">
               <Sparkles className="h-3.5 w-3.5 text-neutral-400" />
