@@ -13,9 +13,8 @@ import { useCallback, useSyncExternalStore } from "react";
  *
  * Signed-in users who already have a Supabase display_name still go
  * through this once per browser (it's asking "what should ScoutAI
- * call you", not duplicating account profile data) — but the name
- * step is skippable, and OnboardingFlow pre-fills it from the account
- * profile when one exists, so it reads as a formality, not a form.
+ * call you", not duplicating account profile data). OnboardingFlow pre-fills
+ * the name from the account profile when one exists.
  */
 
 const ONBOARDED_KEY = "scoutai:onboarded";
@@ -82,15 +81,5 @@ export function useOnboarding() {
     }
   }, []);
 
-  const skipOnboarding = useCallback(() => {
-    try {
-      localStorage.setItem(ONBOARDED_KEY, "1");
-    } catch (err) {
-      console.error("[Onboarding] Failed to persist skip:", err);
-    } finally {
-      notify();
-    }
-  }, []);
-
-  return { hasOnboarded, localDisplayName, completeOnboarding, skipOnboarding };
+  return { hasOnboarded, localDisplayName, completeOnboarding };
 }

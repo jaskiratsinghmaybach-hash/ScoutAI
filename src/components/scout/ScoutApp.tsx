@@ -115,12 +115,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     reportWrite,
   } = useAuth();
 
-  const { hasOnboarded, localDisplayName, completeOnboarding, skipOnboarding } =
-    useOnboarding();
+  const { hasOnboarded, localDisplayName, completeOnboarding } = useOnboarding();
   // Prefer the name captured locally during onboarding; fall back to
   // the Supabase account's display_name for a signed-in user who
-  // onboarded on a different browser. Neither is required — greeting
-  // is a nicety, not a gate.
+  // onboarded on a different browser.
   // Authenticated accounts own the name once signed in — every
   // account has its own display_name, so it always wins over
   // whatever was captured locally pre-auth. The local name isn't
@@ -2129,7 +2127,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             hasOnboarded={hasOnboarded}
             onboardingPrefillName={profile?.display_name}
             onCompleteOnboarding={completeOnboarding}
-            onSkipOnboarding={skipOnboarding}
             displayName={effectiveDisplayName}
           />
         </div>
