@@ -27,6 +27,12 @@ import type { SyncStatus } from "@/lib/useAuth";
  */
 
 const HEADLINE = "Every great shot starts with the right place.";
+const WELCOME_MESSAGES = [
+  "Welcome back",
+  "Ready to scout",
+  "Let’s find your next place",
+  "Your next great shot awaits",
+] as const;
 
 interface RightPanelIdleProps {
   user: User | null;
@@ -50,6 +56,14 @@ export function RightPanelIdle({
   const router = useRouter();
   const [recentChats, setRecentChats] = useState<ChatSummary[]>([]);
   const [quickStarts, setQuickStarts] = useState<string[]>([]);
+  const [welcomeIndex, setWelcomeIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setWelcomeIndex((current) => (current + 1) % WELCOME_MESSAGES.length);
+    }, 4200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Both read from localStorage / re-shuffle client-side — deferred a
   // tick past mount, same pattern ChatsList uses, so hydration never
@@ -87,11 +101,17 @@ export function RightPanelIdle({
         className="relative flex w-full max-w-3xl flex-col items-start text-left"
       >
         {displayName && (
-          <span className="font-display mb-1.5 text-sm font-medium text-neutral-400">
-            Welcome back, {displayName}
-          </span>
+          <motion.span
+            key={welcomeIndex}
+            initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            className="font-display mb-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+          >
+            {WELCOME_MESSAGES[welcomeIndex]}, {displayName}
+          </motion.span>
         )}
-        <h1 className="font-display max-w-lg text-balance text-[34px] font-bold leading-[1.08] tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 sm:text-[38px]">
+        <h1 className="font-display whitespace-nowrap text-[22px] font-medium leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 sm:text-[26px]">
           {HEADLINE}
         </h1>
       </motion.div>
