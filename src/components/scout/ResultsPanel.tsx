@@ -60,7 +60,6 @@ export function ResultsPanel({
   hasOnboarded,
   onboardingPrefillName,
   onCompleteOnboarding,
-  onSkipOnboarding,
   displayName,
 }: {
   runs: ScoutRun[];
@@ -81,7 +80,6 @@ export function ResultsPanel({
   hasOnboarded: boolean;
   onboardingPrefillName?: string | null;
   onCompleteOnboarding: (name: string) => void;
-  onSkipOnboarding: () => void;
   displayName?: string | null;
 }) {
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
@@ -192,7 +190,6 @@ export function ResultsPanel({
             <OnboardingFlow
               prefillName={onboardingPrefillName}
               onComplete={onCompleteOnboarding}
-              onSkip={onSkipOnboarding}
             />
           ) : (
             <RightPanelIdle
