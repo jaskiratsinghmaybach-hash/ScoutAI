@@ -107,7 +107,7 @@ export function RightPanelIdle({
             {WELCOME_MESSAGES[welcomeIndex]}, {displayName}
           </motion.span>
         )}
-        <h1 className="font-display whitespace-nowrap text-[22px] font-medium leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 sm:text-[26px]">
+        <h1 className="font-display whitespace-nowrap text-[22px] font-medium leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 sm:text-[24px]">
           {HEADLINE}
         </h1>
       </motion.div>
@@ -119,7 +119,7 @@ export function RightPanelIdle({
           leaves most of the space empty. Both cards size to their own
           content (no flex-1 stretch), so a sparse list never gets
           centered inside a tall empty box. */}
-      <div className="mt-3 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
+      <div className="mt-0 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
         {/* Continuity row */}
         <motion.button
           type="button"
