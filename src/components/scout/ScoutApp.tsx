@@ -1242,7 +1242,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
               setIsDropdownOpen(false);
             }}
             user={user}
-            syncStatus={syncStatus}
             activeView={activeView}
             onSelectView={(v) => setActiveView(v)}
             localChatCount={listAllChats().length}
@@ -1452,7 +1451,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
               setIsDropdownOpen(false);
             }}
             user={user}
-            syncStatus={syncStatus}
             activeView={activeView}
             onSelectView={(v) => setActiveView(v)}
             localChatCount={listAllChats().length}

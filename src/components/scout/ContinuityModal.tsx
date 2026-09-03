@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import type { SyncStatus, ActiveView } from "@/lib/useAuth";
+import type { ActiveView } from "@/lib/useAuth";
 import type { UserProfile } from "@/lib/profile";
 import {
     syncLocalToAccount,
@@ -33,7 +33,6 @@ import {
 interface ContinuityModalProps {
     onClose: () => void;
     user: User | null;
-    syncStatus: SyncStatus;
     activeView: ActiveView;
     onSelectView: (view: ActiveView) => void;
     localChatCount: number;
@@ -60,7 +59,6 @@ function InfoTooltip({ text }: { text: string }) {
 export function ContinuityModal({
     onClose,
     user,
-    syncStatus,
     activeView,
     onSelectView,
     localChatCount,
@@ -414,24 +412,6 @@ export function ContinuityModal({
                                     {user ? "Cloud Sync & Views" : "Offline or Cloud Sync"}
                                 </p>
                             </div>
-                            {user && syncStatus && (
-                                <span className="inline-flex items-center gap-1.5 text-[11px] text-foreground-muted">
-                                    <span
-                                        className={`h-1.5 w-1.5 rounded-full ${
-                                            syncStatus === "synced"
-                                                ? "bg-emerald-400"
-                                                : syncStatus === "syncing"
-                                                ? "bg-amber-400 animate-pulse"
-                                                : "bg-neutral-500"
-                                        }`}
-                                    />
-                                    {syncStatus === "synced"
-                                        ? "Synced"
-                                        : syncStatus === "syncing"
-                                        ? "Syncing"
-                                        : "Ready"}
-                                </span>
-                            )}
                         </div>
 
                         {/* Profile Section (only when signed in) */}
