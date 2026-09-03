@@ -79,11 +79,13 @@ export function BroadSuggestions({
       {visible.map(({ s, i }) => (
         <div
           key={i}
-          // Translucent + blurred rather than the previous near-solid
-          // bg-neutral-800/60 — these chips sit right on top of the
-          // message thread, and that background was opaque enough to
-          // hide the messages behind it instead of just tinting them.
-          className="group inline-flex items-center gap-1.5 rounded-full bg-neutral-800/30 pl-3 pr-1.5 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-md ring-1 ring-white/5 transition-colors hover:bg-neutral-800/50"
+          // Light glass effect rather than a solid dark chip — these
+          // sit right on top of the message thread, so the fill needs
+          // to stay faint (12% black) with a strong blur doing the
+          // work of separating the chip from what's behind it, instead
+          // of an opaque tint hiding it. Hover nudges the fill up
+          // slightly for feedback without going back to a solid block.
+          className="group inline-flex items-center gap-1.5 rounded-full bg-black/10 pl-3 pr-1.5 py-1.5 text-xs font-medium text-neutral-200 backdrop-blur-xl ring-1 ring-white/10 transition-colors hover:bg-black/20"
         >
           <button type="button" onClick={() => onPick(s)} className="hover:text-white">
             {s}
@@ -100,7 +102,7 @@ export function BroadSuggestions({
               })
             }
             aria-label="Dismiss suggestion"
-            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-white"
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/15 hover:text-white"
           >
             <X className="h-3 w-3" />
           </button>

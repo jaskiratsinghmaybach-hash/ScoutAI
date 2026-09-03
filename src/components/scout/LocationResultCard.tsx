@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationStats } from "./LocationStats";
 import { SceneTab } from "./tabs/SceneTab";
@@ -62,6 +62,13 @@ export function LocationResultCard({
   );
   const [selectedId, setSelectedId] = useState(sortedLocations[0]?.id ?? "");
   const [activeTab, setActiveTab] = useState<TabKey>("Scene");
+  // Lets the user hide the "fewer than 4 results" note themselves.
+  // Keyed by the note's own text rather than a plain boolean so that
+  // switching to a *different* run/search still shows its own note
+  // even if this one was dismissed — only re-showing the exact same
+  // note (e.g. flipping between cards within the same packet) stays
+  // hidden once dismissed.
+  const [dismissedNote, setDismissedNote] = useState<string | null>(null);
 
   const location =
     sortedLocations.find((l) => l.id === selectedId) ?? sortedLocations[0];
@@ -167,10 +174,18 @@ export function LocationResultCard({
         </div>
       </div>
 
-      {packet.narrowing_note && (
+      {packet.narrowing_note && packet.narrowing_note !== dismissedNote && (
         <div className="flex shrink-0 items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground-muted">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{packet.narrowing_note}</span>
+          <span className="flex-1">{packet.narrowing_note}</span>
+          <button
+            type="button"
+            onClick={() => setDismissedNote(packet.narrowing_note ?? null)}
+            aria-label="Dismiss note"
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-foreground-muted transition-colors hover:bg-neutral-800/60 hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       )}
 

@@ -4,18 +4,29 @@ import { useState, useEffect, useRef } from "react";
 import { ChevronDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Location } from "@/types";
+import { getCachedCardSuggestions, ensureCardSuggestions } from "@/lib/cardSuggestionsCache";
 
 /**
  * Dropdown of 2-3 pinpoint suggested questions for ONE specific
- * location (fetched from /api/card-suggestions). Lives directly under
- * "Add to chat" in the card UI. Picking a suggestion calls onPick,
- * which the parent uses to both fill the message box with that text
- * AND attach this location — same as clicking Add to Chat manually,
- * just pre-filled.
+ * location. Lives directly under "Add to chat" in the card UI.
+ * Picking a suggestion calls onPick, which the parent uses to both
+ * fill the message box with that text AND attach this location —
+ * same as clicking Add to Chat manually, just pre-filled.
+ *
+ * Suggestions are generated in the background (see
+ * cardSuggestionsCache.ts + the prefetch call in ResultsPanel) the
+ * moment a result packet lands, and persisted in localStorage keyed
+ * by location id — so by the time the user opens this dropdown for a
+ * card they've already been shown, the answer is usually already
+ * sitting in cache and appears instantly instead of triggering a
+ * fresh Gemini call. Switching between cards and back doesn't lose
+ * anything either, since the cache lives in localStorage rather than
+ * component state.
  *
  * The parent renders this with `key={location.id}`, so switching to a
- * different location remounts the component and resets `open` /
- * `suggestions` for free — no reset effect needed here.
+ * different location remounts the component — that's fine here since
+ * all it resets is which dropdown is open, not the suggestions
+ * themselves (those come from the shared cache, not local state).
  */
 export function CardSuggestions({
   location,
@@ -25,8 +36,9 @@ export function CardSuggestions({
   onPick: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[] | null>(() =>
+    getCachedCardSuggestions(location.id),
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
 
@@ -40,27 +52,18 @@ export function CardSuggestions({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Covers the rare case where this card's background prefetch (fired
+  // when the packet first landed) hasn't resolved yet by the time the
+  // user opens the dropdown — falls back to fetching (and caching) on
+  // demand rather than showing a permanent empty state.
   async function handleToggle() {
     const willOpen = !open;
     setOpen(willOpen);
-    if (willOpen && suggestions === null && !loading) {
+    if (willOpen && suggestions === null) {
       const requestId = ++requestIdRef.current;
-      setLoading(true);
-      try {
-        const res = await fetch("/api/card-suggestions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ location }),
-        });
-        const data = (await res.json()) as { suggestions?: string[] };
-        if (requestIdRef.current !== requestId) return; // stale — user moved on
-        setSuggestions(data.suggestions ?? []);
-      } catch {
-        if (requestIdRef.current !== requestId) return;
-        setSuggestions([]);
-      } finally {
-        if (requestIdRef.current === requestId) setLoading(false);
-      }
+      const result = await ensureCardSuggestions(location);
+      if (requestIdRef.current !== requestId) return; // stale — user moved on
+      setSuggestions(result);
     }
   }
 
@@ -97,12 +100,12 @@ export function CardSuggestions({
               <X className="h-3 w-3" />
             </button>
           </div>
-          {loading ? (
+          {suggestions === null ? (
             <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-foreground-muted">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Thinking of questions…
             </div>
-          ) : suggestions && suggestions.length > 0 ? (
+          ) : suggestions.length > 0 ? (
             suggestions.map((s, i) => (
               <button
                 key={i}

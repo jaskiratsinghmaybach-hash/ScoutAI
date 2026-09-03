@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import { X, MessageSquarePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { AgentActivityFocused } from "./AgentActivityFocused";
 import { LocationResultCard } from "./LocationResultCard";
 import { RightPanelIdle } from "./RightPanelIdle";
 import { CardSuggestions } from "./CardSuggestions";
+import { prefetchCardSuggestions } from "@/lib/cardSuggestionsCache";
 import type { ScoutRun, Location } from "@/types";
 
 /**
@@ -66,6 +67,22 @@ export function ResultsPanel({
   const focusedRun = runs.find((r) => r.id === focusedRunId) ?? null;
   const isFocused = Boolean(focusedRun);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
+  // Kick off background generation of every card's "Suggestions"
+  // dropdown content as soon as a result packet is shown — not
+  // per-card on click. By the time the user flips from e.g. House Of
+  // The Palms to Greystone Mansion, its suggestions are already
+  // sitting in the cache (see cardSuggestionsCache.ts) instead of
+  // needing a fresh Gemini round-trip. Runs once per distinct set of
+  // locations (keyed by their ids) rather than on every render.
+  const packetLocations = selectedRun?.packet?.locations;
+  const packetLocationsKey = packetLocations?.map((l) => l.id).join(",") ?? "";
+  useEffect(() => {
+    if (packetLocations && packetLocations.length > 0) {
+      prefetchCardSuggestions(packetLocations);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packetLocationsKey]);
 
   return (
     <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col">
