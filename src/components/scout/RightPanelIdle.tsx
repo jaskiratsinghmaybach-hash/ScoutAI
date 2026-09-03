@@ -56,13 +56,11 @@ export function RightPanelIdle({
   const router = useRouter();
   const [recentChats, setRecentChats] = useState<ChatSummary[]>([]);
   const [quickStarts, setQuickStarts] = useState<string[]>([]);
-  const [welcomeIndex, setWelcomeIndex] = useState(0);
-
-  // Choose one welcome line per refresh rather than cycling through them
-  // while the user is reading the dashboard.
-  useEffect(() => {
-    setWelcomeIndex(Math.floor(Math.random() * WELCOME_MESSAGES.length));
-  }, []);
+  // Pick one line for this page load. It never changes while the user is
+  // on the dashboard, and a full refresh naturally chooses again.
+  const [welcomeIndex] = useState(() =>
+    Math.floor(Math.random() * WELCOME_MESSAGES.length),
+  );
 
   // Both read from localStorage / re-shuffle client-side — deferred a
   // tick past mount, same pattern ChatsList uses, so hydration never
@@ -101,7 +99,6 @@ export function RightPanelIdle({
       >
         {displayName && (
           <motion.span
-            key={welcomeIndex}
             initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             transition={{ duration: 0.55, ease: "easeOut" }}
