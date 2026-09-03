@@ -62,11 +62,24 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center py-7">
           {step === "welcome" && (
-            <div key="welcome" className="mr-auto w-full max-w-xl">
-              <h1 className="max-w-lg text-balance font-display text-4xl font-semibold leading-[1.04] tracking-[-0.04em] text-foreground sm:text-5xl">Let&apos;s find the place your story needs.</h1>
-              <p className="mt-5 max-w-md text-pretty text-sm leading-6 text-foreground-muted">ScoutAI turns a rough scene idea into a considered shortlist with visual fit, access notes, and sources you can trust.</p>
-              <div className="mt-[19px] flex flex-wrap gap-2 text-xs text-foreground-muted"><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Describe a scene</span><ArrowRight className="mt-2 h-3.5 w-3.5" /><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Get a smarter shortlist</span></div>
-              <button type="button" onClick={() => setStep("intent")} className="mt-10 inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/60 active:scale-95">Start scouting <ArrowRight className="h-4 w-4" /></button>
+            <div key="welcome" className="flex w-full items-center justify-between gap-12">
+              <div className="mr-auto w-full max-w-xl">
+                <h1 className="max-w-lg text-balance font-display text-4xl font-semibold leading-[1.04] tracking-[-0.04em] text-foreground sm:text-5xl">Let&apos;s find the place your story needs.</h1>
+                <p className="mt-5 max-w-md text-pretty text-sm leading-6 text-foreground-muted">ScoutAI turns a rough scene idea into a considered shortlist with visual fit, access notes, and sources you can trust.</p>
+                <div className="mt-[19px] flex flex-wrap gap-2 text-xs text-foreground-muted"><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Describe a scene</span><ArrowRight className="mt-2 h-3.5 w-3.5" /><span className="rounded-full border border-border bg-foreground/[0.04] px-3 py-2">Get a smarter shortlist</span></div>
+                <button type="button" onClick={() => setStep("intent")} className="mt-10 inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/60 active:scale-95">Start scouting <ArrowRight className="h-4 w-4" /></button>
+              </div>
+              <div aria-hidden="true" className="hidden w-[min(34vw,24rem)] shrink-0 flex-col gap-3 lg:flex">
+                <div className="flex items-center justify-between border-b border-border pb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground-muted"><span>Scouting signals</span><span className="font-mono tracking-normal text-foreground/50">01—03</span></div>
+                <div className="rounded-2xl border border-border bg-foreground/[0.035] p-4">
+                  <div className="flex items-center justify-between text-xs text-foreground-muted"><span>Visual character</span><span className="font-mono text-foreground/60">READY</span></div>
+                  <div className="mt-4 flex items-end gap-1"><span className="h-8 w-2 rounded-full bg-foreground/25" /><span className="h-12 w-2 rounded-full bg-foreground/45" /><span className="h-16 w-2 rounded-full bg-foreground/75" /><span className="h-10 w-2 rounded-full bg-foreground/35" /><span className="h-14 w-2 rounded-full bg-foreground/55" /><span className="h-7 w-2 rounded-full bg-foreground/20" /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-border bg-foreground/[0.025] p-4"><span className="font-mono text-lg text-foreground">24</span><p className="mt-1 text-xs leading-5 text-foreground-muted">places to compare</p></div>
+                  <div className="rounded-2xl border border-border bg-foreground/[0.025] p-4"><span className="font-mono text-lg text-foreground">7</span><p className="mt-1 text-xs leading-5 text-foreground-muted">access notes</p></div>
+                </div>
+              </div>
             </div>
           )}
 
