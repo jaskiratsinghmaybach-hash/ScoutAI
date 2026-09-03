@@ -10,22 +10,6 @@ import { listAllChats, type ChatSummary } from "@/lib/chatStorage";
 import { SCENE_SUGGESTIONS } from "@/data/suggestions";
 import type { SyncStatus } from "@/lib/useAuth";
 
-/**
- * Idle state of the right panel — shown whenever there's no active
- * scout packet to display. This panel is wide (900px+ in practice),
- * so layout is: a centered headline, then a full-width Continuity
- * row, then Recent activity + Quick start side by side below it.
- * Both of those cards size to their own content — they never
- * stretch to fill leftover space, so a single recent chat doesn't
- * get centered inside an oversized empty box.
- *
- * Opening Continuity or jumping into a past chat both hand off to
- * state that already lives in ScoutApp; the quick-start chips call
- * straight into handleInitialSubmit via onQuickStart, so picking one
- * here does exactly what typing it into the composer and hitting
- * enter would do.
- */
-
 const HEADLINE = "Every great shot starts with the right place.";
 const WELCOME_MESSAGES = [
   "Welcome back",
@@ -56,15 +40,10 @@ export function RightPanelIdle({
   const router = useRouter();
   const [recentChats, setRecentChats] = useState<ChatSummary[]>([]);
   const [quickStarts, setQuickStarts] = useState<string[]>([]);
-  // Pick one line for this page load. It never changes while the user is
-  // on the dashboard, and a full refresh naturally chooses again.
   const [welcomeIndex] = useState(() =>
     Math.floor(Math.random() * WELCOME_MESSAGES.length),
   );
 
-  // Both read from localStorage / re-shuffle client-side — deferred a
-  // tick past mount, same pattern ChatsList uses, so hydration never
-  // has to reconcile server vs. client output.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setRecentChats(listAllChats().slice(0, 2));
@@ -73,18 +52,9 @@ export function RightPanelIdle({
     return () => window.clearTimeout(timer);
   }, []);
 
-  const syncLabel =
-    syncStatus === "syncing"
-      ? "Syncing…"
-      : syncStatus === "pending"
-        ? "Sync pending"
-        : user
-          ? "Synced"
-          : "Local only";
-
   return (
     <div className="relative flex h-full min-h-[50vh] w-full flex-col items-center overflow-hidden px-2 py-2">
-      {/* Ambient glow behind the headline — quiet, monochrome, no clashing color */}
+      {/* Ambient glow behind the headline */}
       <div
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-0 h-64 w-[36rem] -translate-x-1/2 -translate-y-1/3 rounded-full bg-white/[0.06] blur-[90px]"
@@ -112,13 +82,6 @@ export function RightPanelIdle({
         </h1>
       </motion.div>
 
-      {/* Below the headline: Continuity spans full width (it's a single
-          status/action row), then Recent activity + Quick start sit
-          side by side on wide panels — this panel is often 900px+
-          wide in practice, so a single narrow max-w-md column just
-          leaves most of the space empty. Both cards size to their own
-          content (no flex-1 stretch), so a sparse list never gets
-          centered inside a tall empty box. */}
       <div className="mt-0 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
         {/* Continuity row */}
         <motion.button
@@ -137,28 +100,12 @@ export function RightPanelIdle({
               <span className="text-[13px] font-semibold text-foreground">
                 Continuity
               </span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                  syncStatus === "syncing"
-                    ? "bg-amber-400/10 text-amber-400"
-                    : user
-                      ? "bg-emerald-400/10 text-emerald-400"
-                      : "bg-neutral-700/50 text-neutral-400",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    syncStatus === "syncing"
-                      ? "bg-amber-400 animate-pulse"
-                      : user
-                        ? "bg-emerald-400"
-                        : "bg-neutral-500",
-                  )}
-                />
-                {syncLabel}
-              </span>
+              {!user && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-neutral-700/50 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-neutral-500" />
+                  Local only
+                </span>
+              )}
             </div>
             <p className="mt-0.5 truncate text-[12px] leading-relaxed text-foreground-muted">
               {user
@@ -169,7 +116,7 @@ export function RightPanelIdle({
           <ArrowRight className="h-3.5 w-3.5 shrink-0 text-neutral-500 transition-transform group-hover:translate-x-0.5 group-hover:text-white" />
         </motion.button>
 
-        {/* Recent activity + Quick start, side by side on wider panels */}
+        {/* Recent activity + Quick start */}
         <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
           {/* Recent Scout activity */}
           <motion.div
