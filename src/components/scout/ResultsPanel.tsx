@@ -3,15 +3,18 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import { X, MessageSquarePlus } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { RunHistoryDropdown } from "./RunHistoryDropdown";
 import { AgentActivityMiniPill } from "./AgentActivityMiniPill";
 import { AgentActivityFocused } from "./AgentActivityFocused";
 import { LocationResultCard } from "./LocationResultCard";
 import { RightPanelIdle } from "./RightPanelIdle";
+import { OnboardingFlow } from "./OnboardingFlow";
 import { CardSuggestions } from "./CardSuggestions";
 import { prefetchCardSuggestions } from "@/lib/cardSuggestionsCache";
 import type { ScoutRun, Location } from "@/types";
+import type { SyncStatus } from "@/lib/useAuth";
 
 /**
  * Right-panel state machine (see conversation notes for the full spec
@@ -50,6 +53,15 @@ export function ResultsPanel({
   onDismissCards,
   onAttachCard,
   onAttachSuggestion,
+  user,
+  syncStatus,
+  onOpenContinuity,
+  onQuickStart,
+  hasOnboarded,
+  onboardingPrefillName,
+  onCompleteOnboarding,
+  onSkipOnboarding,
+  displayName,
 }: {
   runs: ScoutRun[];
   inFlightRun: ScoutRun | null;
@@ -62,6 +74,15 @@ export function ResultsPanel({
   onDismissCards: () => void;
   onAttachCard: (location: Location) => void;
   onAttachSuggestion: (location: Location, suggestionText: string) => void;
+  user: User | null;
+  syncStatus: SyncStatus;
+  onOpenContinuity: () => void;
+  onQuickStart: (text: string) => void;
+  hasOnboarded: boolean;
+  onboardingPrefillName?: string | null;
+  onCompleteOnboarding: (name: string) => void;
+  onSkipOnboarding: () => void;
+  displayName?: string | null;
 }) {
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
   const focusedRun = runs.find((r) => r.id === focusedRunId) ?? null;
@@ -167,8 +188,20 @@ export function ResultsPanel({
               packet={selectedRun.packet}
               onSelectedLocationChange={setSelectedLocation}
             />
+          ) : !hasOnboarded ? (
+            <OnboardingFlow
+              prefillName={onboardingPrefillName}
+              onComplete={onCompleteOnboarding}
+              onSkip={onSkipOnboarding}
+            />
           ) : (
-            <RightPanelIdle />
+            <RightPanelIdle
+              user={user}
+              syncStatus={syncStatus}
+              onOpenContinuity={onOpenContinuity}
+              onQuickStart={onQuickStart}
+              displayName={displayName}
+            />
           )}
         </div>
 

@@ -28,6 +28,7 @@ import {
 } from "@/lib/chatStorage";
 import { upsertChat, fetchAccountChatState } from "@/lib/continuitySync";
 import { useAuth } from "@/lib/useAuth";
+import { useOnboarding } from "@/lib/useOnboarding";
 import {
   createEmptyTree,
   addMessage,
@@ -113,6 +114,23 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     signOut,
     reportWrite,
   } = useAuth();
+
+  const { hasOnboarded, localDisplayName, completeOnboarding, skipOnboarding } =
+    useOnboarding();
+  // Prefer the name captured locally during onboarding; fall back to
+  // the Supabase account's display_name for a signed-in user who
+  // onboarded on a different browser. Neither is required — greeting
+  // is a nicety, not a gate.
+  // Authenticated accounts own the name once signed in — every
+  // account has its own display_name, so it always wins over
+  // whatever was captured locally pre-auth. The local name isn't
+  // discarded, just no longer consulted while user is set: sign out
+  // again and it's still there for the next local session. Editing
+  // still goes through the existing Continuity "edit name" flow,
+  // which writes straight to the Supabase profile.
+  const effectiveDisplayName = user
+    ? (profile?.display_name ?? null)
+    : localDisplayName;
 
   const handleDeleteConfirmedOnCurrentChat = (deletedId: string) => {
     if (chatId && chatId === deletedId) {
@@ -2104,6 +2122,15 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
               setAttachedCard({ scope: "single", locations: [location] });
               setFollowUpText(suggestionText);
             }}
+            user={user}
+            syncStatus={syncStatus}
+            onOpenContinuity={() => setShowContinuityModal(true)}
+            onQuickStart={(text) => handleInitialSubmit(text)}
+            hasOnboarded={hasOnboarded}
+            onboardingPrefillName={profile?.display_name}
+            onCompleteOnboarding={completeOnboarding}
+            onSkipOnboarding={skipOnboarding}
+            displayName={effectiveDisplayName}
           />
         </div>
       </main>
