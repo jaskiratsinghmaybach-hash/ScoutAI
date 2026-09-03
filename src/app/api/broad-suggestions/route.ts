@@ -40,7 +40,7 @@ ${locationsBlock}
 Respond with ONLY a JSON array of 2-3 short strings, nothing else. Example: ["Compare budgets across these", "Which has the best permits?", "Find more like these"]`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
     const text = await generateWithRetry(model, prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const suggestions = JSON.parse(cleaned) as unknown;

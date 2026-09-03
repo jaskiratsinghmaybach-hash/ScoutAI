@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
         description: string;
     };
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
     const prompt = `Generate a short, descriptive title for this film location scouting session.
 
