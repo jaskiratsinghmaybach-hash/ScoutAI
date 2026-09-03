@@ -26,7 +26,9 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    onComplete(name.trim());
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    onComplete(trimmedName);
   }
 
   return (
@@ -71,7 +73,7 @@ export function OnboardingFlow({ prefillName, onComplete, onSkip }: OnboardingFl
         )}
 
         {step === "profile" && (
-          <div className="mr-auto w-full max-w-md"><button type="button" onClick={() => setStep("intent")} className="mb-7 inline-flex items-center gap-1.5 text-xs text-foreground-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/50"><ArrowLeft className="h-3.5 w-3.5" /> Back</button><h2 className="text-balance font-display text-3xl font-semibold tracking-[-0.03em] text-foreground">One last thing.</h2><p className="mt-2 text-sm leading-6 text-foreground-muted">What should ScoutAI call you? This is optional and only personalizes your workspace.</p><form onSubmit={submit} className="mt-7 flex max-w-sm flex-col gap-3"><label htmlFor="onboarding-name" className="text-xs font-medium text-foreground-muted">Your name</label><input id="onboarding-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Alex Morgan" className="h-12 rounded-xl border border-border bg-foreground/[0.04] px-4 text-sm text-foreground placeholder:text-foreground-muted focus:border-foreground/50 focus:outline-none focus:ring-2 focus:ring-foreground/20" /><button type="submit" className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/60 active:scale-95">Enter<ArrowRight className="h-4 w-4" /></button></form></div>
+          <div className="mr-auto w-full max-w-md"><button type="button" onClick={() => setStep("intent")} className="mb-7 inline-flex items-center gap-1.5 text-xs text-foreground-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/50"><ArrowLeft className="h-3.5 w-3.5" /> Back</button><h2 className="text-balance font-display text-3xl font-semibold tracking-[-0.03em] text-foreground">One last thing.</h2><p className="mt-2 text-sm leading-6 text-foreground-muted">What should ScoutAI call you? Your name is required to personalize your workspace.</p><form onSubmit={submit} className="mt-7 flex max-w-sm flex-col gap-3"><label htmlFor="onboarding-name" className="text-xs font-medium text-foreground-muted">Your name</label><input id="onboarding-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Alex Morgan" required aria-required="true" className="h-12 rounded-xl border border-border bg-foreground/[0.04] px-4 text-sm text-foreground placeholder:text-foreground-muted focus:border-foreground/50 focus:outline-none focus:ring-2 focus:ring-foreground/20" /><button type="submit" className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-foreground px-5 py-3 text-sm font-semibold text-background transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/60 active:scale-95">Enter<ArrowRight className="h-4 w-4" /></button></form></div>
         )}
       </div>
     </section>

@@ -14,7 +14,6 @@ import { OnboardingFlow } from "./OnboardingFlow";
 import { CardSuggestions } from "./CardSuggestions";
 import { prefetchCardSuggestions } from "@/lib/cardSuggestionsCache";
 import type { ScoutRun, Location } from "@/types";
-import type { SyncStatus } from "@/lib/useAuth";
 
 /**
  * Right-panel state machine (see conversation notes for the full spec
@@ -54,7 +53,6 @@ export function ResultsPanel({
   onAttachCard,
   onAttachSuggestion,
   user,
-  syncStatus,
   onOpenContinuity,
   onQuickStart,
   hasOnboarded,
@@ -75,7 +73,6 @@ export function ResultsPanel({
   onAttachCard: (location: Location) => void;
   onAttachSuggestion: (location: Location, suggestionText: string) => void;
   user: User | null;
-  syncStatus: SyncStatus;
   onOpenContinuity: () => void;
   onQuickStart: (text: string) => void;
   hasOnboarded: boolean;
@@ -197,7 +194,6 @@ export function ResultsPanel({
           ) : (
             <RightPanelIdle
               user={user}
-              syncStatus={syncStatus}
               onOpenContinuity={onOpenContinuity}
               onQuickStart={onQuickStart}
               displayName={displayName}

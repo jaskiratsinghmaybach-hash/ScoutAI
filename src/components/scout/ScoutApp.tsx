@@ -206,6 +206,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   }
   const [shareCopied, setShareCopied] = useState(false);
+  const [copiedAssistantMessageId, setCopiedAssistantMessageId] = useState<string | null>(null);
+
+  async function handleCopyAssistantMessage(messageId: string, content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedAssistantMessageId(messageId);
+      window.setTimeout(() => setCopiedAssistantMessageId(null), 1500);
+    } catch {
+      // Clipboard access can be unavailable in some browser contexts.
+    }
+  }
   const [shareDialog, setShareDialog] = useState<{
     title: string;
     url: string;
@@ -1665,8 +1676,23 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             }
                           />
                         ) : (
-                          <div className="max-w-[90%] text-sm leading-relaxed text-foreground-muted">
-                            {node.content}
+                          <div className="flex max-w-[90%] flex-col items-start gap-1.5">
+                            <div className="text-sm leading-relaxed text-foreground-muted">
+                              {node.content}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyAssistantMessage(node.id, node.content)}
+                              className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-foreground-muted transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              aria-label="Copy AI message"
+                            >
+                              {copiedAssistantMessageId === node.id ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                              {copiedAssistantMessageId === node.id ? "Copied" : "Copy"}
+                            </button>
                           </div>
                         )}
 
@@ -2122,9 +2148,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
               setAttachedCard({ scope: "single", locations: [location] });
               setFollowUpText(suggestionText);
             }}
-            user={user}
-            syncStatus={syncStatus}
-            onOpenContinuity={() => setShowContinuityModal(true)}
+  user={user}
+  onOpenContinuity={() => setShowContinuityModal(true)}
             onQuickStart={(text) => handleInitialSubmit(text)}
             hasOnboarded={hasOnboarded}
             onboardingPrefillName={profile?.display_name}

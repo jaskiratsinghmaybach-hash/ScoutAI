@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import type { User } from "@supabase/supabase-js";
 import { RefreshCw, History, Sparkles, ArrowRight, ArrowUpRight } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { listAllChats, type ChatSummary } from "@/lib/chatStorage";
 import { SCENE_SUGGESTIONS } from "@/data/suggestions";
-import type { SyncStatus } from "@/lib/useAuth";
 
 /**
  * Idle state of the right panel — shown whenever there's no active
@@ -36,7 +34,6 @@ const WELCOME_MESSAGES = [
 
 interface RightPanelIdleProps {
   user: User | null;
-  syncStatus: SyncStatus;
   onOpenContinuity: () => void;
   onQuickStart: (text: string) => void;
   displayName?: string | null;
@@ -48,7 +45,6 @@ function pickThree(): string[] {
 
 export function RightPanelIdle({
   user,
-  syncStatus,
   onOpenContinuity,
   onQuickStart,
   displayName,
@@ -72,15 +68,6 @@ export function RightPanelIdle({
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-
-  const syncLabel =
-    syncStatus === "syncing"
-      ? "Syncing…"
-      : syncStatus === "pending"
-        ? "Sync pending"
-        : user
-          ? "Synced"
-          : "Local only";
 
   return (
     <div className="relative flex h-full min-h-[50vh] w-full flex-col items-center overflow-hidden px-2 py-2">
@@ -136,28 +123,6 @@ export function RightPanelIdle({
             <div className="flex items-center gap-2">
               <span className="text-[13px] font-semibold text-foreground">
                 Continuity
-              </span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                  syncStatus === "syncing"
-                    ? "bg-amber-400/10 text-amber-400"
-                    : user
-                      ? "bg-emerald-400/10 text-emerald-400"
-                      : "bg-neutral-700/50 text-neutral-400",
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    syncStatus === "syncing"
-                      ? "bg-amber-400 animate-pulse"
-                      : user
-                        ? "bg-emerald-400"
-                        : "bg-neutral-500",
-                  )}
-                />
-                {syncLabel}
               </span>
             </div>
             <p className="mt-0.5 truncate text-[12px] leading-relaxed text-foreground-muted">
