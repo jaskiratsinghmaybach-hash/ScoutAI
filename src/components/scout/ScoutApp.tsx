@@ -851,6 +851,9 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     // spec ("when a NEW run starts, [pill] resets to track the new
     // one").
     setInFlightRunId(runId);
+    // Show the live Agent Activity panel immediately so the user can
+    // see that work has started without needing to click the pill.
+    setFocusedRunId(runId);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
