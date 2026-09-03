@@ -11,7 +11,7 @@ Built for the Google Cloud Agentic Cinema Hackathon (Parallel track).
 1. **Parse** — Gemini reads the scene brief and flags vague/unusable input.
 2. **Research** — Gemini generates targeted search queries, run live via
    **Parallel Search API**.
-3. **Scout** — Gemini Pro synthesizes raw search results into ranked,
+3. **Scout** — Gemini synthesizes raw search results into ranked,
    structured location packets.
 4. **Report** — Gemini writes a scout's reasoning note summarizing the pick.
 

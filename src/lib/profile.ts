@@ -25,6 +25,22 @@ export async function fetchUserProfile(userId: string): Promise<UserProfile | nu
             .maybeSingle();
 
         if (error) {
+            if (error.message.includes("JWT issued at future")) {
+                // PostgREST rejects the token because its `iat` claim is
+                // later than PostgREST's own clock. This is a clock-skew
+                // problem, not a bug in this query — it means the client
+                // (or whichever machine minted the token) has a system
+                // clock that's ahead of the Supabase project's server
+                // time. No amount of retrying or re-fetching the profile
+                // fixes it; the system clock needs to be corrected /
+                // resynced (e.g. re-enable automatic time sync).
+                console.error(
+                    "[Profile] fetchUserProfile error: JWT issued-at is ahead of the server's clock. " +
+                        "This machine's system clock is likely out of sync — check that automatic " +
+                        "date/time sync is enabled and correct, then sign in again.",
+                );
+                return null;
+            }
             console.error("[Profile] fetchUserProfile error:", error.message);
             return null;
         }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ChevronDown, Loader2 } from "lucide-react";
+import { ChevronDown, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Location } from "@/types";
 
@@ -12,6 +12,10 @@ import type { Location } from "@/types";
  * which the parent uses to both fill the message box with that text
  * AND attach this location — same as clicking Add to Chat manually,
  * just pre-filled.
+ *
+ * The parent renders this with `key={location.id}`, so switching to a
+ * different location remounts the component and resets `open` /
+ * `suggestions` for free — no reset effect needed here.
  */
 export function CardSuggestions({
   location,
@@ -25,13 +29,6 @@ export function CardSuggestions({
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
-
-  useEffect(() => {
-    // Reset cached suggestions when the location changes — a new
-    // card's suggestions shouldn't show stale ones from the last.
-    setSuggestions(null);
-    setOpen(false);
-  }, [location.id]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -79,7 +76,27 @@ export function CardSuggestions({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-64 overflow-hidden rounded-lg border border-border bg-surface shadow-lg">
+        // Anchored to the right edge and clamped to the viewport width
+        // (minus a small margin) rather than a fixed w-64 — this panel
+        // sits near the right edge of the results panel, and a
+        // left-aligned fixed width was running off-screen there.
+        // max-h + overflow-y-auto keeps a long suggestion list (or a
+        // future increase in count) scrollable within the viewport
+        // instead of extending past it.
+        <div className="absolute right-0 top-full z-30 mt-1.5 w-64 max-w-[calc(100vw-2rem)] max-h-[min(20rem,calc(100vh-6rem))] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface shadow-lg">
+          <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+            <span className="text-[11px] font-medium text-foreground-muted">
+              Suggestions
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close suggestions"
+              className="flex h-5 w-5 items-center justify-center rounded-full text-foreground-muted transition-colors hover:bg-neutral-800/60 hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
           {loading ? (
             <div className="flex items-center justify-center gap-2 px-3 py-3 text-xs text-foreground-muted">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

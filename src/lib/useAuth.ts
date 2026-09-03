@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import type { User } from "@supabase/supabase-js";
 import type { ChatSummary } from "@/lib/chatStorage";
 import { supabase } from "@/lib/supabaseClient";
@@ -9,6 +9,47 @@ import { fetchUserProfile, type UserProfile } from "@/lib/profile";
 
 export type SyncStatus = "idle" | "syncing" | "synced" | "pending";
 export type ActiveView = "local" | "account";
+
+const ACTIVE_VIEW_KEY = "scoutai:active_view";
+
+function isActiveView(value: string | null): value is ActiveView {
+    return value === "local" || value === "account";
+}
+
+// activeView is backed by localStorage but read through
+// useSyncExternalStore rather than a `typeof window` branch inside a
+// useState lazy initializer. That branch was the direct cause of the
+// hydration mismatch: the server can only ever render "local" (no
+// localStorage there), but a lazy initializer runs during the client's
+// first hydration pass too, so if "account" was saved, the client's
+// very first paint disagreed with the server-rendered HTML.
+// useSyncExternalStore fixes this by using getServerSnapshot ("local")
+// for the server render *and* the client's initial hydration render,
+// then re-rendering with the real localStorage value right after
+// hydration finishes — no mismatch, no effect-based reset needed.
+const activeViewListeners = new Set<() => void>();
+
+function subscribeActiveView(listener: () => void) {
+    activeViewListeners.add(listener);
+    return () => activeViewListeners.delete(listener);
+}
+
+function getActiveViewSnapshot(): ActiveView {
+    if (typeof window === "undefined") return "local";
+    const saved = localStorage.getItem(ACTIVE_VIEW_KEY);
+    return isActiveView(saved) ? saved : "local";
+}
+
+function getActiveViewServerSnapshot(): ActiveView {
+    return "local";
+}
+
+function writeActiveView(view: ActiveView) {
+    if (typeof window !== "undefined") {
+        localStorage.setItem(ACTIVE_VIEW_KEY, view);
+    }
+    activeViewListeners.forEach((listener) => listener());
+}
 
 export interface UseAuthReturn {
     user: User | null;
@@ -37,24 +78,14 @@ export interface UseAuthReturn {
  * and auto-opens account dropdown after glow animation completes.
  */
 export function useAuth(): UseAuthReturn {
-    // activeView is initialized directly from localStorage via useState's
-    // lazy initializer, rather than starting at a fixed default and then
-    // syncing from localStorage in a mount effect. This reads the "external
-    // system" (localStorage) exactly once, before first render, which is
-    // both correct behavior and avoids react-hooks/set-state-in-effect —
-    // there's no synchronous setState call inside an effect body at all.
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
-    const [activeView, setActiveViewRaw] = useState<ActiveView>(() => {
-        if (typeof window !== "undefined") {
-            const saved = localStorage.getItem("scoutai:active_view") as ActiveView | null;
-            if (saved === "local" || saved === "account") {
-                return saved;
-            }
-        }
-        return "local";
-    });
+    const activeView = useSyncExternalStore(
+        subscribeActiveView,
+        getActiveViewSnapshot,
+        getActiveViewServerSnapshot,
+    );
     const [accountChats, setAccountChats] = useState<ChatSummary[]>([]);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isGlowing, setIsGlowing] = useState(false);
@@ -64,10 +95,7 @@ export function useAuth(): UseAuthReturn {
     const hasPendingRef = useRef(false);
 
     const setActiveView = useCallback((view: ActiveView) => {
-        setActiveViewRaw(view);
-        if (typeof window !== "undefined") {
-            localStorage.setItem("scoutai:active_view", view);
-        }
+        writeActiveView(view);
     }, []);
 
     const refreshAccountChats = useCallback(async () => {
@@ -124,10 +152,7 @@ export function useAuth(): UseAuthReturn {
                         setAccountChats(chats);
 
                         // c. Set activeView = 'account'
-                        setActiveViewRaw("account");
-                        if (typeof window !== "undefined") {
-                            localStorage.setItem("scoutai:active_view", "account");
-                        }
+                        writeActiveView("account");
 
                         // d. Trigger brief glow/pulse animation on account icon
                         setIsGlowing(true);

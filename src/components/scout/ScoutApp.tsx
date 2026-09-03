@@ -6,7 +6,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { compressToEncodedURIComponent } from "lz-string";
 import { Button } from "@/components/ui/button";
-import { ArrowUp, Check, Copy } from "lucide-react";
+import { ArrowUp, Check, Copy, Square } from "lucide-react";
 import BorderGlow from "@/components/scout/BorderGlow";
 import { QuestionCard } from "@/components/scout/QuestionCard";
 import { ActivityPill } from "@/components/scout/ActivityPill";
@@ -1723,6 +1723,24 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                       </div>
                     )}
 
+                  {/* Follow-up with an attached card goes through the
+                      /api/card-chat classify step before anything else
+                      happens (see handleFollowUp) — that request can take
+                      a moment, and until now nothing in the message
+                      stream showed feedback while it was in flight (the
+                      submit button had a tiny pulsing dot, easy to miss).
+                      Mirrors the "thinking" indicator above; only one of
+                      the two is ever visible since phase !== "thinking"
+                      while isFollowingUp/isClassifyingCardChat is true. */}
+                  {(isFollowingUp || isClassifyingCardChat) && (
+                    <div className="flex items-center gap-2 text-xs text-foreground-muted">
+                      <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+                      {isClassifyingCardChat
+                        ? "Thinking about that..."
+                        : thinkingMessage}
+                    </div>
+                  )}
+
                   {error && (
                     <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
                       {error}
@@ -1895,13 +1913,19 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                   ? thinkingMessage
                                   : "Researching locations..."}
                               </div>
+                              {/* handleStop itself already aborts the
+                                  controller/reader correctly — this was
+                                  only a visual bug: a 3px div read as an
+                                  inert dot rather than a clickable stop
+                                  icon. Swapped for a proper filled
+                                  square with hover/active feedback. */}
                               <button
                                 type="button"
                                 onClick={handleStop}
                                 aria-label="Stop"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-raised hover:bg-surface-raised/70 transition-colors"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-raised transition-colors hover:bg-surface-raised/70 active:scale-95"
                               >
-                                <div className="h-3 w-3 rounded-[3px] bg-white" />
+                                <Square className="h-3.5 w-3.5 fill-white text-white" />
                               </button>
                             </div>
                           </BorderGlow>

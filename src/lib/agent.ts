@@ -323,7 +323,7 @@ export async function runScoutAgent(
   onStep({
     step: 3,
     action: "Scouting and ranking locations",
-    detail: "Gemini Pro is synthesizing research into scouting packets...",
+    detail: "Gemini is synthesizing research into scouting packets...",
     status: "running",
   });
   const candidateLocations = await synthesizeLocations(query, searchResults);

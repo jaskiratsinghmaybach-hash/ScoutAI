@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { X, MessageSquarePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RunHistoryDropdown } from "./RunHistoryDropdown";
@@ -94,7 +94,14 @@ export function ResultsPanel({
 
         {selectedRun?.packet && selectedLocation && (
           <div className="flex shrink-0 items-center gap-3">
-            <div className="flex flex-col items-end gap-0.5">
+            {/* Suggestions sits to the LEFT of "Add to chat", same row —
+                previously stacked underneath it in a flex-col wrapper. */}
+            <div className="flex items-center gap-3">
+              <CardSuggestions
+                key={selectedLocation.id}
+                location={selectedLocation}
+                onPick={(text) => onAttachSuggestion(selectedLocation, text)}
+              />
               <button
                 type="button"
                 onClick={() => onAttachCard(selectedLocation)}
@@ -105,10 +112,6 @@ export function ResultsPanel({
                 <MessageSquarePlus className="h-3.5 w-3.5" />
                 Add to chat
               </button>
-              <CardSuggestions
-                location={selectedLocation}
-                onPick={(text) => onAttachSuggestion(selectedLocation, text)}
-              />
             </div>
 
             <button
@@ -154,7 +157,7 @@ export function ResultsPanel({
 
         <AnimatePresence>
           {focusedRun && (
-            <AgentActivityFocused run={focusedRun} />
+            <AgentActivityFocused run={focusedRun} onClose={onCloseFocused} />
           )}
         </AnimatePresence>
 

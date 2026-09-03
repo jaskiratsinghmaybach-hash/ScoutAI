@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { X } from "lucide-react";
 import type { Location } from "@/types";
 
 /**
@@ -20,15 +21,32 @@ export function BroadSuggestions({
   onPick: (text: string) => void;
 }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const requestIdRef = useRef(0);
   // Key by the set of location ids so suggestions refresh when the
   // underlying card set actually changes (a new run replacing the
   // old 4), not on every unrelated re-render.
   const locationsKey = locations.map((l) => l.id).join(",");
 
+  // Store the key alongside state so we can reset `dismissed` instantly
+  // during render when `locationsKey` changes without causing cascading effect renders.
+  const [dismissedState, setDismissedState] = useState<{
+    key: string;
+    set: Set<number>;
+  }>({
+    key: locationsKey,
+    set: new Set(),
+  });
+
+  const dismissed =
+    dismissedState.key === locationsKey
+      ? dismissedState.set
+      : new Set<number>();
+
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
     if (locations.length === 0) {
-      setSuggestions([]);
+      // Nothing to fetch — `visible` below already renders nothing
+      // when `locations` is empty, so there's no state to reset here.
       return;
     }
     const requestId = ++requestIdRef.current;
@@ -49,19 +67,44 @@ export function BroadSuggestions({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationsKey]);
 
-  if (suggestions.length === 0) return null;
+  const visible =
+    locations.length === 0
+      ? []
+      : suggestions.map((s, i) => ({ s, i })).filter(({ i }) => !dismissed.has(i));
+
+  if (visible.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-2 px-1">
-      {suggestions.map((s, i) => (
-        <button
+      {visible.map(({ s, i }) => (
+        <div
           key={i}
-          type="button"
-          onClick={() => onPick(s)}
-          className="rounded-full bg-neutral-800/60 px-3 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-sm transition-colors hover:bg-neutral-800 hover:text-white"
+          // Translucent + blurred rather than the previous near-solid
+          // bg-neutral-800/60 — these chips sit right on top of the
+          // message thread, and that background was opaque enough to
+          // hide the messages behind it instead of just tinting them.
+          className="group inline-flex items-center gap-1.5 rounded-full bg-neutral-800/30 pl-3 pr-1.5 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-md ring-1 ring-white/5 transition-colors hover:bg-neutral-800/50"
         >
-          {s}
-        </button>
+          <button type="button" onClick={() => onPick(s)} className="hover:text-white">
+            {s}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setDismissedState((prev) => {
+                const currentSet =
+                  prev.key === locationsKey ? prev.set : new Set<number>();
+                const updated = new Set(currentSet);
+                updated.add(i);
+                return { key: locationsKey, set: updated };
+              })
+            }
+            aria-label="Dismiss suggestion"
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-white"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
       ))}
     </div>
   );
