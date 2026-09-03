@@ -27,6 +27,12 @@ import type { SyncStatus } from "@/lib/useAuth";
  */
 
 const HEADLINE = "Every great shot starts with the right place.";
+const WELCOME_MESSAGES = [
+  "Welcome back",
+  "Ready to scout",
+  "Let’s find your next place",
+  "Your next great shot awaits",
+] as const;
 
 interface RightPanelIdleProps {
   user: User | null;
@@ -50,6 +56,11 @@ export function RightPanelIdle({
   const router = useRouter();
   const [recentChats, setRecentChats] = useState<ChatSummary[]>([]);
   const [quickStarts, setQuickStarts] = useState<string[]>([]);
+  // Pick one line for this page load. It never changes while the user is
+  // on the dashboard, and a full refresh naturally chooses again.
+  const [welcomeIndex] = useState(() =>
+    Math.floor(Math.random() * WELCOME_MESSAGES.length),
+  );
 
   // Both read from localStorage / re-shuffle client-side — deferred a
   // tick past mount, same pattern ChatsList uses, so hydration never
@@ -84,14 +95,19 @@ export function RightPanelIdle({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative flex flex-col items-center text-center"
+        className="relative flex w-full max-w-3xl flex-col items-start text-left"
       >
         {displayName && (
-          <span className="font-display mb-1.5 text-sm font-medium text-neutral-400">
-            Welcome back, {displayName}
-          </span>
+          <motion.span
+            initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            className="font-display mb-1 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl"
+          >
+            {WELCOME_MESSAGES[welcomeIndex]}, {displayName}
+          </motion.span>
         )}
-        <h1 className="font-display max-w-lg text-balance text-[34px] font-bold leading-[1.08] tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 sm:text-[38px]">
+        <h1 className="font-display whitespace-nowrap text-[22px] font-medium leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-neutral-400 sm:text-[24px]">
           {HEADLINE}
         </h1>
       </motion.div>
@@ -103,7 +119,7 @@ export function RightPanelIdle({
           leaves most of the space empty. Both cards size to their own
           content (no flex-1 stretch), so a sparse list never gets
           centered inside a tall empty box. */}
-      <div className="mt-6 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
+      <div className="mt-0 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
         {/* Continuity row */}
         <motion.button
           type="button"
@@ -111,7 +127,7 @@ export function RightPanelIdle({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.08, ease: "easeOut" }}
-          className="group flex items-center gap-3 rounded-xl border border-border bg-neutral-900/60 px-4 py-3.5 text-left backdrop-blur-sm transition-all duration-200 hover:border-border-strong hover:bg-neutral-900 active:scale-[0.99]"
+          className="group flex items-center gap-3 rounded-none border border-border bg-neutral-900/60 px-4 py-3.5 text-left backdrop-blur-sm transition-all duration-200 hover:border-border-strong hover:bg-neutral-900 active:scale-[0.99]"
         >
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-800/80 text-neutral-300 transition-colors group-hover:text-white">
             <RefreshCw className="h-4 w-4" />
@@ -160,7 +176,7 @@ export function RightPanelIdle({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.16, ease: "easeOut" }}
-            className="flex flex-col rounded-xl border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
+            className="flex flex-col rounded-none border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
           >
             <div className="flex items-center gap-1.5 px-0.5">
               <History className="h-3.5 w-3.5 text-neutral-400" />
@@ -201,7 +217,7 @@ export function RightPanelIdle({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.24, ease: "easeOut" }}
-            className="flex flex-col rounded-xl border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
+            className="flex flex-col rounded-none border border-border bg-neutral-900/60 p-4 backdrop-blur-sm"
           >
             <div className="flex items-center gap-1.5 px-0.5">
               <Sparkles className="h-3.5 w-3.5 text-neutral-400" />
