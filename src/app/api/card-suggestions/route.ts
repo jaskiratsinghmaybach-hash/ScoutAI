@@ -41,7 +41,7 @@ Logistics notes: ${location.logistics_notes}
 Respond with ONLY a JSON array of exactly 3 short question strings, nothing else. Example: ["What's the actual daily cost breakdown?", "Does this fit a moody night scene?", "Any permit restrictions for weekends?"]`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const text = await generateWithRetry(model, prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const suggestions = JSON.parse(cleaned) as unknown;

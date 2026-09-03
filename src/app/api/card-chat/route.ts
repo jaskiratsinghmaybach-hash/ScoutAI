@@ -88,7 +88,7 @@ If intent is "answer":
 {"intent": "answer", "answer": "<a direct, concise, conversational answer to their question using ONLY the data provided above — 2-4 sentences, no fluff, no 'I hope this helps', just the facts. If the data above doesn't actually contain what they're asking, say so plainly rather than guessing.>"}`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const text = await generateWithRetry(model, prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned) as Partial<CardChatResponse>;

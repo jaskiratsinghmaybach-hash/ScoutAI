@@ -482,7 +482,7 @@ ${locationsBlock}
 Respond with ONLY a JSON array of 2-3 short strings, nothing else. Example: ["Compare budgets across these", "Which has the best permits?", "Find more like these"]`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const text = await generateWithRetry(model, prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const suggestions = JSON.parse(cleaned) as unknown;
@@ -591,7 +591,7 @@ If intent is "answer":
 {"intent": "answer", "answer": "<a direct, concise, conversational answer to their question using ONLY the data provided above — 2-4 sentences, no fluff, no 'I hope this helps', just the facts. If the data above doesn't actually contain what they're asking, say so plainly rather than guessing.>"}`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const text = await generateWithRetry(model, prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned) as Partial<CardChatResponse>;
@@ -673,7 +673,7 @@ Logistics notes: ${location.logistics_notes}
 Respond with ONLY a JSON array of exactly 3 short question strings, nothing else. Example: ["What's the actual daily cost breakdown?", "Does this fit a moody night scene?", "Any permit restrictions for weekends?"]`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const text = await generateWithRetry(model, prompt);
     const cleaned = text.replace(/```json|```/g, "").trim();
     const suggestions = JSON.parse(cleaned) as unknown;
@@ -718,7 +718,7 @@ export async function POST(req: NextRequest) {
         description: string;
     };
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const prompt = `Generate a short, descriptive title for this film location scouting session.
 
@@ -6223,7 +6223,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ next_question: null, updated_slots: {} } satisfies ClarifyResponse);
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const conversationText = history
     .map((turn) => `${turn.role === "user" ? "User" : "ScoutAI"}: ${turn.content}`)
@@ -8200,7 +8200,7 @@ async function parallelSearch(query: string): Promise<string> {
 }
 // Step 1: Generate search queries from scene description using Gemini
 async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
 
@@ -8277,7 +8277,7 @@ async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const searchContext = Object.entries(searchResults)
     .map(([q, r]) => `Query: ${q}\nResults:\n${r}`)
@@ -8355,7 +8355,7 @@ async function filterToRealLocations(locations: Location[]): Promise<Location[]>
     locations.map((loc) => verifyLocationExists(loc)),
   );
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const context = locations
     .map(
@@ -8400,7 +8400,7 @@ async function generateReasoning(
     return "No locations could be confirmed as real, findable places for this search.";
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `As a film location scout, summarize your findings for this scene in a tight, scannable format.
 

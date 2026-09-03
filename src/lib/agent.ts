@@ -63,7 +63,7 @@ async function parallelSearch(query: string): Promise<string> {
 }
 // Step 1: Generate search queries from scene description using Gemini
 async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
 
@@ -140,7 +140,7 @@ async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const searchContext = Object.entries(searchResults)
     .map(([q, r]) => `Query: ${q}\nResults:\n${r}`)
@@ -218,7 +218,7 @@ async function filterToRealLocations(locations: Location[]): Promise<Location[]>
     locations.map((loc) => verifyLocationExists(loc)),
   );
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const context = locations
     .map(
@@ -263,7 +263,7 @@ async function generateReasoning(
     return "No locations could be confirmed as real, findable places for this search.";
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `As a film location scout, summarize your findings for this scene in a tight, scannable format.
 
