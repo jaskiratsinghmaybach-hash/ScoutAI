@@ -58,11 +58,10 @@ export function RightPanelIdle({
   const [quickStarts, setQuickStarts] = useState<string[]>([]);
   const [welcomeIndex, setWelcomeIndex] = useState(0);
 
+  // Choose one welcome line per refresh rather than cycling through them
+  // while the user is reading the dashboard.
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setWelcomeIndex((current) => (current + 1) % WELCOME_MESSAGES.length);
-    }, 4200);
-    return () => window.clearInterval(timer);
+    setWelcomeIndex(Math.floor(Math.random() * WELCOME_MESSAGES.length));
   }, []);
 
   // Both read from localStorage / re-shuffle client-side — deferred a
@@ -106,7 +105,7 @@ export function RightPanelIdle({
             initial={{ opacity: 0, y: 10, filter: "blur(8px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             transition={{ duration: 0.55, ease: "easeOut" }}
-            className="font-display mb-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+            className="font-display mb-1 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl"
           >
             {WELCOME_MESSAGES[welcomeIndex]}, {displayName}
           </motion.span>
@@ -123,7 +122,7 @@ export function RightPanelIdle({
           leaves most of the space empty. Both cards size to their own
           content (no flex-1 stretch), so a sparse list never gets
           centered inside a tall empty box. */}
-      <div className="mt-6 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
+      <div className="mt-3 flex w-full max-w-3xl flex-1 flex-col justify-center gap-3">
         {/* Continuity row */}
         <motion.button
           type="button"
