@@ -689,7 +689,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     const submittedText = (
       userHasEdited ? introText : introText || typewriter.displayText
     ).trim();
-    if (submittedText.length < 5) return;
+    if (submittedText.length < 1) return;
 
     const newHistory: ConversationTurn[] = [
       { role: "user", content: submittedText },
@@ -1320,7 +1320,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   (userHasEdited
                     ? introText
                     : introText || typewriter.displayText
-                  ).trim().length < 5
+                  ).trim().length < 1
                 }
                 className="h-10 w-10 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
               >
