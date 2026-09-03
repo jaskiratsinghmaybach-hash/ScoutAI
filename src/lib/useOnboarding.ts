@@ -81,5 +81,20 @@ export function useOnboarding() {
     }
   }, []);
 
-  return { hasOnboarded, localDisplayName, completeOnboarding };
+  const setLocalDisplayName = useCallback((name: string) => {
+    try {
+      localStorage.setItem(NAME_KEY, name.trim());
+    } catch (err) {
+      console.error("[Onboarding] Failed to persist display name:", err);
+    } finally {
+      notify();
+    }
+  }, []);
+
+  return {
+    hasOnboarded,
+    localDisplayName,
+    completeOnboarding,
+    setLocalDisplayName,
+  };
 }

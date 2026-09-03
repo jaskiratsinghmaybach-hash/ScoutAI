@@ -115,19 +115,16 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     reportWrite,
   } = useAuth();
 
-  const { hasOnboarded, localDisplayName, completeOnboarding } = useOnboarding();
-  // Prefer the name captured locally during onboarding; fall back to
-  // the Supabase account's display_name for a signed-in user who
-  // onboarded on a different browser.
-  // Authenticated accounts own the name once signed in — every
-  // account has its own display_name, so it always wins over
-  // whatever was captured locally pre-auth. The local name isn't
-  // discarded, just no longer consulted while user is set: sign out
-  // again and it's still there for the next local session. Editing
-  // still goes through the existing Continuity "edit name" flow,
-  // which writes straight to the Supabase profile.
+  const {
+    hasOnboarded,
+    localDisplayName,
+    completeOnboarding,
+    setLocalDisplayName,
+  } = useOnboarding();
+  // A name edited in Continuity intentionally overrides the local
+  // onboarding name. Until then, keep showing the local name after auth.
   const effectiveDisplayName = user
-    ? (profile?.display_name ?? null)
+    ? (profile?.display_name ?? localDisplayName ?? null)
     : localDisplayName;
 
   const handleDeleteConfirmedOnCurrentChat = (deletedId: string) => {
@@ -1111,7 +1108,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const googleName = user?.user_metadata?.full_name as string | undefined;
   const headerAvatarUrl = profile?.avatar_url ?? googleAvatar;
   const headerDisplayName =
-    profile?.display_name ?? googleName ?? user?.email ?? "Account";
+    profile?.display_name ?? localDisplayName ?? googleName ?? user?.email ?? "Account";
   const headerInitial = headerDisplayName.charAt(0).toUpperCase();
 
   // ---------- INTRO / LANDING VIEW ----------
@@ -1248,6 +1245,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
             profile={profile}
             onRefreshProfile={refreshProfile}
+            onLocalDisplayNameChange={setLocalDisplayName}
+            localDisplayName={localDisplayName}
           />
         )}
 
@@ -1458,6 +1457,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             onDeleteConfirmedOnCurrentChat={handleDeleteConfirmedOnCurrentChat}
             profile={profile}
             onRefreshProfile={refreshProfile}
+            onLocalDisplayNameChange={setLocalDisplayName}
+            localDisplayName={localDisplayName}
           />
         )}
       </motion.div>
@@ -2125,7 +2126,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             onOpenContinuity={() => setShowContinuityModal(true)}
             onQuickStart={(text) => handleInitialSubmit(text)}
             hasOnboarded={hasOnboarded}
-            onboardingPrefillName={profile?.display_name}
+            onboardingPrefillName={effectiveDisplayName}
             onCompleteOnboarding={completeOnboarding}
             displayName={effectiveDisplayName}
           />

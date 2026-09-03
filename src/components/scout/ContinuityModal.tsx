@@ -44,6 +44,8 @@ interface ContinuityModalProps {
     onDeleteConfirmedOnCurrentChat?: (deletedChatId: string) => void;
     profile: UserProfile | null;
     onRefreshProfile: () => Promise<void>;
+    onLocalDisplayNameChange: (name: string) => void;
+    localDisplayName?: string | null;
 }
 
 function InfoTooltip({ text }: { text: string }) {
@@ -71,6 +73,8 @@ export function ContinuityModal({
     onDeleteConfirmedOnCurrentChat,
     profile,
     onRefreshProfile,
+    onLocalDisplayNameChange,
+    localDisplayName,
 }: ContinuityModalProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +124,7 @@ export function ContinuityModal({
 
     const effectiveAvatarUrl = profile?.avatar_url ?? googleAvatar;
     const effectiveDisplayName =
-        profile?.display_name ?? googleName ?? user?.email ?? "Account";
+        profile?.display_name ?? localDisplayName ?? googleName ?? user?.email ?? "Account";
 
     const initial = (
         profile?.display_name ??
@@ -240,6 +244,7 @@ export function ContinuityModal({
 
         const res = await updateDisplayName(user.id, nameInput);
         if (res.ok) {
+            onLocalDisplayNameChange(res.profile.display_name ?? "");
             await onRefreshProfile();
             setIsEditingName(false);
             setProfileFeedback({ text: "Display name updated." });
