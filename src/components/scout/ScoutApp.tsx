@@ -25,6 +25,9 @@ import {
   loadChatState,
   listAllChats,
   generateChatId,
+  savePendingDraft,
+  loadPendingDraft,
+  clearPendingDraft,
 } from "@/lib/chatStorage";
 import { upsertChat, fetchAccountChatState } from "@/lib/continuitySync";
 import { useAuth } from "@/lib/useAuth";
@@ -397,7 +400,19 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         setCurrentQuestion(null);
         setError(null);
         setFollowUpText("");
-        setIntroText("");
+        // A message typed on the landing page before onboarding was
+        // done lands here as a pending draft rather than real history
+        // (see handleIntroSubmit). Put it back in the composer so the
+        // user sees exactly what they typed, still unsent — marking
+        // userHasEdited so it renders as plain typed text rather than
+        // the animated placeholder.
+        const draft = loadPendingDraft(id);
+        if (draft) {
+          setIntroText(draft);
+          setUserHasEdited(true);
+        } else {
+          setIntroText("");
+        }
         setRightPanelRunId(null);
         return;
       }
@@ -470,6 +485,16 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       isCancelled = true;
     };
   }, [chatId, activeView, user]);
+
+  // Once onboarding completes, a pending draft has done its job — the
+  // text is already sitting in introText for the user to review and
+  // send themselves. Just drop the stored draft record so it doesn't
+  // resurface on a later visit to this chat.
+  useEffect(() => {
+    if (chatId && hasOnboarded) {
+      clearPendingDraft(chatId);
+    }
+  }, [chatId, hasOnboarded]);
 
   function handleInitialSubmit(textToSubmit?: string) {
     if (!canSend) return;
@@ -694,15 +719,26 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   function handleIntroSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Blocked until onboarding is complete — the text stays exactly as
-    // typed in the box, nothing is saved or navigated. This is the
-    // authoritative check; the disabled input/button are just the
-    // visible half of it.
-    if (!canSend) return;
     const submittedText = (
       userHasEdited ? introText : introText || typewriter.displayText
     ).trim();
     if (submittedText.length < 1) return;
+
+    // The landing page never gates on onboarding — typing and
+    // submitting here always works. Onboarding itself only lives in
+    // the chat view's right panel, so a message submitted here before
+    // onboarding is done can't be sent to the agent yet. In that case
+    // we still create the chat and navigate, but stash the message as
+    // a pending draft instead of writing it into history: the chat
+    // page reads the draft back into its own composer (visibly sitting
+    // in the box, unsent) and the user sends it themselves once
+    // onboarding finishes.
+    if (!canSend) {
+      const newId = generateChatId();
+      savePendingDraft(newId, submittedText);
+      router.push(`/chat/${newId}`);
+      return;
+    }
 
     const newHistory: ConversationTurn[] = [
       { role: "user", content: submittedText },
@@ -1308,12 +1344,6 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             Autonomous location scouting for film &amp; commercial productions.
           </p>
 
-          {!canSend && (
-            <p className="mt-2 text-xs text-foreground-muted">
-              Please complete onboarding to start sending messages.
-            </p>
-          )}
-
           <BorderGlow className="mt-6 w-full" {...GLOW_PROPS}>
             <form
               onSubmit={handleIntroSubmit}
@@ -1350,8 +1380,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   userHasEdited ? "Describe the scene you're scouting..." : ""
                 }
                 autoFocus
-                disabled={!canSend}
-                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none ${
                   (userHasEdited
                     ? introText
                     : introText || typewriter.displayText) ||
@@ -1360,27 +1389,18 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     : "text-white/85"
                 }`}
               />
-              <span
-                title={
-                  canSend
-                    ? undefined
-                    : "Complete onboarding to start sending messages"
+              <Button
+                type="submit"
+                disabled={
+                  (userHasEdited
+                    ? introText
+                    : introText || typewriter.displayText
+                  ).trim().length < 1
                 }
+                className="h-10 w-10 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
               >
-                <Button
-                  type="submit"
-                  disabled={
-                    !canSend ||
-                    (userHasEdited
-                      ? introText
-                      : introText || typewriter.displayText
-                    ).trim().length < 1
-                  }
-                  className="h-10 w-10 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
-                >
-                  <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
-                </Button>
-              </span>
+                <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
+              </Button>
             </form>
           </BorderGlow>
 
@@ -1833,7 +1853,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     <div className="shrink-0">
                       {!canSend && (
                         <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
-                          Please complete onboarding to start sending messages.
+                          Finish the quick setup on the right to start chatting with ScoutAI.
                         </div>
                       )}
                       <div className="px-6 pb-6 pt-2">
@@ -1860,7 +1880,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               title={
                                 canSend
                                   ? undefined
-                                  : "Complete onboarding to start sending messages"
+                                  : "Finish the quick setup on the right to send messages"
                               }
                             >
                               <Button
@@ -1894,7 +1914,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                       )}
                       {!canSend && phase === "clarifying" && (
                         <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
-                          Please complete onboarding to start sending messages.
+                          Finish the quick setup on the right to start chatting with ScoutAI.
                         </div>
                       )}
                       <div className="px-6 pb-6 pt-2 space-y-3">
@@ -1935,7 +1955,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                     title={
                                       canSend
                                         ? undefined
-                                        : "Complete onboarding to start sending messages"
+                                        : "Finish the quick setup on the right to send messages"
                                     }
                                   >
                                     <Button
@@ -2009,7 +2029,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 title={
                                   canSend
                                     ? undefined
-                                    : "Complete onboarding to start sending messages"
+                                    : "Finish the quick setup on the right to send messages"
                                 }
                               >
                                 <Button
@@ -2065,7 +2085,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     )}
                     {!canSend && (
                       <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
-                        Please complete onboarding to start sending messages.
+                        Finish the quick setup on the right to start chatting with ScoutAI.
                       </div>
                     )}
                     <div className="px-6 pb-6 pt-2">
@@ -2130,7 +2150,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             title={
                               canSend
                                 ? undefined
-                                : "Complete onboarding to start sending messages"
+                                : "Finish the quick setup on the right to send messages"
                             }
                           >
                             <Button
@@ -2158,7 +2178,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     )}
                     {!canSend && (
                       <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
-                        Please complete onboarding to start sending messages.
+                        Finish the quick setup on the right to start chatting with ScoutAI.
                       </div>
                     )}
                     {(() => {
@@ -2204,7 +2224,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               title={
                                 canSend
                                   ? undefined
-                                  : "Complete onboarding to start sending messages"
+                                  : "Finish the quick setup on the right to send messages"
                               }
                             >
                               <Button

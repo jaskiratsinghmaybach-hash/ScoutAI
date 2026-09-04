@@ -120,6 +120,50 @@ export function generateChatId(): string {
     return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
+/**
+ * Pending drafts — a message typed before onboarding is complete.
+ *
+ * The landing page never blocks typing or submitting. When onboarding
+ * isn't done yet, submitting from the landing page still creates the
+ * chat and navigates to it, but the message is stashed here instead of
+ * being written into `history` (writing it to history would trigger the
+ * chat page's auto-ask-next-question effect, i.e. actually send it).
+ * The chat page reads the draft back into its composer — visibly
+ * sitting in the input, unsent — until onboarding completes and the
+ * user presses send themselves.
+ */
+function draftKey(chatId: string) {
+    return `scoutai:draft:${chatId}`;
+}
+
+export function savePendingDraft(chatId: string, text: string): void {
+    if (typeof window === "undefined") return;
+    try {
+        localStorage.setItem(draftKey(chatId), text);
+    } catch (err) {
+        console.error("Failed to save pending draft:", err);
+    }
+}
+
+export function loadPendingDraft(chatId: string): string | null {
+    if (typeof window === "undefined") return null;
+    try {
+        return localStorage.getItem(draftKey(chatId));
+    } catch (err) {
+        console.error("Failed to load pending draft:", err);
+        return null;
+    }
+}
+
+export function clearPendingDraft(chatId: string): void {
+    if (typeof window === "undefined") return;
+    try {
+        localStorage.removeItem(draftKey(chatId));
+    } catch (err) {
+        console.error("Failed to clear pending draft:", err);
+    }
+}
+
 export interface ChatSummary {
     id: string;
     title: string;
