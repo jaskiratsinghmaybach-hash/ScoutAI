@@ -48,7 +48,10 @@ export function triggerStageInBackground(
     try {
       const res = await fetch(`${origin}${stagePath}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-stage-secret": process.env.INTERNAL_STAGE_SECRET ?? "",
+        },
         body: JSON.stringify(body),
       });
       if (!res.ok) {

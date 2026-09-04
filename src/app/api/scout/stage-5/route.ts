@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateReasoning } from "@/lib/agent";
 import { getScoutRun, pushStep, updateScoutRun, markScoutRunError } from "@/lib/scoutRunStore";
 import type { ScoutingPacket } from "@/types";
+import { requireInternalStageSecret } from "@/lib/internalAuth";
 
 // Stage 5 — generate the agent reasoning summary and assemble the
 // final ScoutingPacket (was Step 5). Last stage: writes packet + sets
@@ -10,6 +11,9 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const authError = requireInternalStageSecret(req);
+  if (authError) return authError;
+
   const { runId } = (await req.json()) as { runId: string };
 
   const run = await getScoutRun(runId);

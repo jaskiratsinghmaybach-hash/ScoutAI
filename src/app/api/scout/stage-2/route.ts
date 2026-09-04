@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runSearches } from "@/lib/agent";
 import { getScoutRun, pushStep, updateScoutRun, markScoutRunError } from "@/lib/scoutRunStore";
 import { triggerStageInBackground } from "@/lib/triggerStage";
+import { requireInternalStageSecret } from "@/lib/internalAuth";
 
 // Stage 2 — run all searches via Parallel (was Step 2). Runs the N
 // searches concurrently (same Promise.all as before inside
@@ -10,6 +11,9 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const authError = requireInternalStageSecret(req);
+  if (authError) return authError;
+
   const { runId } = (await req.json()) as { runId: string };
 
   const run = await getScoutRun(runId);

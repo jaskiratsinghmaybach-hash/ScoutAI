@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateSearchQueries } from "@/lib/agent";
 import { getScoutRun, pushStep, updateScoutRun, markScoutRunError } from "@/lib/scoutRunStore";
 import { triggerStageInBackground } from "@/lib/triggerStage";
+import { requireInternalStageSecret } from "@/lib/internalAuth";
 
 // Stage 1 — generate search queries from the scene description (was
 // Step 1 in the old single-invocation runScoutAgent). Its own
@@ -11,6 +12,9 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const authError = requireInternalStageSecret(req);
+  if (authError) return authError;
+
   const { runId } = (await req.json()) as { runId: string };
 
   const run = await getScoutRun(runId);
