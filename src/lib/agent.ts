@@ -2,14 +2,23 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
 
+// How long a single Gemini call is allowed to run before it's treated
+// as a failure worth retrying/giving up on, rather than left to hang
+// with no ceiling at all. Generous enough for the largest prompt in
+// this pipeline (synthesizeLocations' 4-location structured JSON
+// output) while still leaving real room inside a 60s stage budget.
+const GEMINI_CALL_TIMEOUT_MS = 25000;
+
 export async function generateWithRetry(
   model: ReturnType<typeof genAI.getGenerativeModel>,
   prompt: string,
-  retries = 3
+  retries = 2
 ): Promise<string> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(prompt, {
+        timeout: GEMINI_CALL_TIMEOUT_MS,
+      });
       return result.response.text().trim();
     } catch (err) {
       const isLastAttempt = attempt === retries - 1;
@@ -18,8 +27,14 @@ export async function generateWithRetry(
 
       if (!isRetryable || isLastAttempt) throw err;
 
-      const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      // Flat 1s backoff rather than exponential — this pipeline runs
+      // inside a 60s-per-stage Vercel budget (see the split across
+      // stage-a/b/c/d routes), so keeping worst-case retry cost low and
+      // predictable matters more here than being gentle on the
+      // upstream API. One retry, one fixed delay, so a single 503 costs
+      // at most ~1s instead of up to 7s with the old exponential
+      // schedule.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
   throw new Error("Failed after retries");
@@ -29,22 +44,53 @@ export async function generateWithRetry(
 // Initialize Gemini
 export const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+// How long a single Parallel search is allowed to run before this
+// pipeline gives up on it and moves on with whatever it has. Without
+// this, one slow/hung upstream call has no ceiling and can quietly eat
+// a large chunk of a stage's 60s budget — searches run in parallel via
+// Promise.all, but Promise.all only resolves once its SLOWEST entry
+// does, so one hung request stalls the whole batch. Failing fast here
+// and returning "Search unavailable." for that one query (same
+// fallback already used for a non-OK HTTP response) keeps the rest of
+// the pipeline moving on schedule instead of stalling on it.
+const SEARCH_TIMEOUT_MS = 8000;
+
 // Parallel Search API helper
 async function parallelSearch(query: string): Promise<string> {
   const apiKey = process.env.PARALLEL_API_KEY!;
-  const response = await fetch("https://api.parallel.ai/v1beta/search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "parallel-beta": "search-extract-2025-10-10",
-    },
-    body: JSON.stringify({
-      objective: query,
-      search_queries: [query],
-      max_results: 5,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.parallel.ai/v1beta/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "parallel-beta": "search-extract-2025-10-10",
+      },
+      body: JSON.stringify({
+        objective: query,
+        search_queries: [query],
+        // Trimmed from 5 to 3 — fewer results means less data to fetch
+        // over the wire and less text for the later Gemini calls
+        // (synthesis, verification) to read through per query, without
+        // meaningfully hurting result quality: the top 3 hits already
+        // carry the great majority of what the synthesis/verification
+        // prompts actually use.
+        max_results: 3,
+      }),
+      signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.name === "TimeoutError";
+    console.error(
+      isTimeout
+        ? `Parallel search timed out after ${SEARCH_TIMEOUT_MS}ms:`
+        : "Parallel search request failed:",
+      query,
+      err,
+    );
+    return "Search unavailable.";
+  }
 
   if (!response.ok) {
     const errorBody = await response.text();
