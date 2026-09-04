@@ -4,10 +4,13 @@ import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
 // How long a single Gemini call is allowed to run before it's treated
 // as a failure worth retrying/giving up on, rather than left to hang
-// with no ceiling at all. Generous enough for the largest prompt in
-// this pipeline (synthesizeLocations' 4-location structured JSON
-// output) while still leaving real room inside a 60s stage budget.
-const GEMINI_CALL_TIMEOUT_MS = 25000;
+// with no ceiling at all. gemini-3.6-flash has "thinking" on by
+// default, which can push response time noticeably higher than older
+// flash models — 35s leaves real headroom below that. This is the
+// FIRST attempt's timeout only; see generateWithRetry for how the
+// retry attempt's timeout is scaled down to stay inside the 60s
+// stage budget.
+const GEMINI_CALL_TIMEOUT_MS = 35000;
 
 export async function generateWithRetry(
   model: ReturnType<typeof genAI.getGenerativeModel>,
@@ -16,24 +19,33 @@ export async function generateWithRetry(
 ): Promise<string> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
+      // First attempt gets the full timeout; a retry after a timeout
+      // uses a shorter one, so total worst-case time (35s + 1s backoff
+      // + 20s ≈ 56s) stays inside the 60s stage budget instead of
+      // risking two full 35s attempts back to back.
+      const attemptTimeout = attempt === 0 ? GEMINI_CALL_TIMEOUT_MS : 20000;
       const result = await model.generateContent(prompt, {
-        timeout: GEMINI_CALL_TIMEOUT_MS,
+        timeout: attemptTimeout,
       });
       return result.response.text().trim();
     } catch (err) {
       const isLastAttempt = attempt === retries - 1;
       const message = err instanceof Error ? err.message : String(err);
-      const isRetryable = message.includes("503") || message.includes("overloaded") || message.includes("high demand");
+      const isRetryable =
+        message.includes("503") ||
+        message.includes("overloaded") ||
+        message.includes("high demand") ||
+        message.includes("aborted") ||
+        message.includes("timeout") ||
+        message.includes("ETIMEDOUT") ||
+        message.includes("ECONNRESET");
 
       if (!isRetryable || isLastAttempt) throw err;
 
       // Flat 1s backoff rather than exponential — this pipeline runs
-      // inside a 60s-per-stage Vercel budget (see the split across
-      // stage-a/b/c/d routes), so keeping worst-case retry cost low and
-      // predictable matters more here than being gentle on the
-      // upstream API. One retry, one fixed delay, so a single 503 costs
-      // at most ~1s instead of up to 7s with the old exponential
-      // schedule.
+      // inside a 60s-per-stage Vercel budget, so keeping worst-case
+      // retry cost low and predictable matters more here than being
+      // gentle on the upstream API.
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
