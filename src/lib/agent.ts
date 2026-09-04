@@ -62,7 +62,7 @@ async function parallelSearch(query: string): Promise<string> {
     .join("\n");
 }
 // Step 1: Generate search queries from scene description using Gemini
-async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
+export async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
   const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
@@ -93,7 +93,7 @@ Only return the JSON array, nothing else. Example: ["query1", "query2", "query3"
 }
 
 // Step 2: Run all searches via Parallel
-async function runSearches(
+export async function runSearches(
   queries: string[]
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
@@ -160,7 +160,7 @@ function normalizeLocations(raw: unknown): Location[] {
 }
 
 // Step 3: Gemini synthesizes research into structured location packets
-async function synthesizeLocations(
+export async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
@@ -237,7 +237,7 @@ async function verifyLocationExists(location: Location): Promise<string> {
   return parallelSearch(query);
 }
 
-async function filterToRealLocations(locations: Location[]): Promise<Location[]> {
+export async function filterToRealLocations(locations: Location[]): Promise<Location[]> {
   if (locations.length === 0) return locations;
 
   const verificationResults = await Promise.all(
@@ -281,7 +281,7 @@ Return a JSON array of ${locations.length} booleans, in the same order as the lo
 }
 
 // Step 5: Generate agent reasoning summary
-async function generateReasoning(
+export async function generateReasoning(
   query: SceneQuery,
   locations: Location[]
 ): Promise<string> {

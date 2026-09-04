@@ -279,8 +279,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const streamReaderRef =
-    useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  // Replaces the old SSE streamReaderRef. dispatchScout no longer holds
+  // a fetch stream open — it POSTs once to kick off the pipeline, then
+  // polls GET /api/scout/[runId] on this interval. Kept as a ref (not
+  // state) for the same reason streamReaderRef was: handleStop/
+  // handleSwitchBranch/handleNewChat need to synchronously tear it down
+  // without waiting for a re-render.
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wasStoppedRef = useRef(false);
   const stoppedDuringRef = useRef<"clarify" | "research">("clarify");
   const lastScoutArgsRef = useRef<{
@@ -638,8 +643,9 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    if (streamReaderRef.current) {
-      streamReaderRef.current.cancel().catch(() => {});
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
 
     setTree((prevTree) => {
@@ -699,8 +705,9 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    if (streamReaderRef.current) {
-      streamReaderRef.current.cancel().catch(() => {});
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
     wasStoppedRef.current = true;
 
@@ -909,6 +916,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    // dispatchScout no longer holds one HTTP request open for the
+    // whole pipeline (that was one continuously-billed Vercel
+    // invocation, capped at 60s total regardless of how the backend
+    // internally split its work — see /api/scout/route.ts for the
+    // full explanation). It now POSTs once to kick the pipeline off
+    // server-side, gets back a scoutRunId, and polls GET
+    // /api/scout/[scoutRunId] every couple seconds for progress until
+    // status is "done" or "error". Every setRuns/setPhase/setError
+    // call below fires at the exact same points, with the same
+    // shapes, as the old SSE "step"/"complete"/"error" handlers did —
+    // only the transport underneath changed.
     try {
       const res = await fetch("/api/scout", {
         method: "POST",
@@ -931,55 +949,58 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         signal: controller.signal,
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error("Failed to connect to scout stream");
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(
+          `Failed to start scout run (status ${res.status}: ${detail || res.statusText || "no body"})`,
+        );
       }
 
-      const reader = res.body.getReader();
-      streamReaderRef.current = reader;
-      const decoder = new TextDecoder();
-      let buffer = "";
+      const { runId: scoutRunId, error: startError } = (await res.json()) as {
+        runId?: string;
+        error?: string;
+      };
+      if (!scoutRunId) {
+        throw new Error(startError || "Scout run did not return a run id");
+      }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6);
+      await new Promise<void>((resolve, reject) => {
+        const poll = async () => {
+          if (controller.signal.aborted) {
+            resolve();
+            return;
+          }
           try {
-            const event = JSON.parse(jsonStr);
+            const statusRes = await fetch(`/api/scout/${scoutRunId}`, {
+              signal: controller.signal,
+            });
+            if (!statusRes.ok) {
+              throw new Error(`Status check failed (${statusRes.status})`);
+            }
+            const data = (await statusRes.json()) as {
+              status: "running" | "done" | "error";
+              steps: typeof initialRun.steps;
+              packet: ScoutRun["packet"];
+              error: string | null;
+            };
 
-            if (event.type === "step") {
-              setRuns((prev) =>
-                prev.map((r) => {
-                  if (r.id !== runId) return r;
-                  const existingIndex = r.steps.findIndex(
-                    (s) => s.step === event.step.step,
-                  );
-                  const newSteps = [...r.steps];
-                  if (existingIndex >= 0) {
-                    newSteps[existingIndex] = event.step;
-                  } else {
-                    newSteps.push(event.step);
-                  }
-                  return { ...r, steps: newSteps };
-                }),
-              );
-            } else if (event.type === "complete" || event.type === "result") {
+            setRuns((prev) =>
+              prev.map((r) => (r.id === runId ? { ...r, steps: data.steps } : r)),
+            );
+
+            if (data.status === "done") {
+              if (pollTimerRef.current) {
+                clearInterval(pollTimerRef.current);
+                pollTimerRef.current = null;
+              }
               setRuns((prev) =>
                 prev.map((r) => {
                   if (r.id !== runId) return r;
                   const finishedSteps = r.steps.map((s) => ({
                     ...s,
-                    status:
-                      s.status === "running" ? ("done" as const) : s.status,
+                    status: s.status === "running" ? ("done" as const) : s.status,
                   }));
-                  return { ...r, steps: finishedSteps, packet: event.packet };
+                  return { ...r, steps: finishedSteps, packet: data.packet };
                 }),
               );
               setPhase("done");
@@ -988,15 +1009,30 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
               if (isFirstRun) {
                 generateChatTitle(finalSlots, activeHistory);
               }
-            } else if (event.type === "error") {
-              setError(event.error);
+              resolve();
+            } else if (data.status === "error") {
+              if (pollTimerRef.current) {
+                clearInterval(pollTimerRef.current);
+                pollTimerRef.current = null;
+              }
+              setError(data.error || "Scout pipeline failed");
               setPhase("clarifying");
+              resolve();
             }
-          } catch (e) {
-            console.error("Failed to parse SSE line:", e);
+            // else "running" — keep polling on the existing interval
+          } catch (err) {
+            if (pollTimerRef.current) {
+              clearInterval(pollTimerRef.current);
+              pollTimerRef.current = null;
+            }
+            reject(err);
           }
-        }
-      }
+        };
+
+        // Poll promptly once, then every 2s until done/error/aborted.
+        poll();
+        pollTimerRef.current = setInterval(poll, 2000);
+      });
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") {
         setPhase("stopped");
@@ -1007,7 +1043,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
       setPhase("clarifying");
     } finally {
       abortControllerRef.current = null;
-      streamReaderRef.current = null;
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     }
   }
 
@@ -1016,10 +1055,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    if (streamReaderRef.current) {
-      streamReaderRef.current.cancel().catch(() => {});
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
     setPhase("stopped");
+    // Note: this only stops the CLIENT from polling further — the
+    // server-side pipeline (whichever stage is currently running) is
+    // fire-and-forget and will keep running to completion in the
+    // background, same as it would if you closed the browser tab
+    // during the old SSE version. Its result is simply never picked
+    // back up client-side once stopped.
   }
 
   function handleNewChat() {
