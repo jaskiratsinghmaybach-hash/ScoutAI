@@ -127,6 +127,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     ? (profile?.display_name ?? localDisplayName ?? null)
     : localDisplayName;
 
+  // Gates every send action (landing page + every chat-view input) on
+  // onboarding being complete. Checked BOTH in the UI (disabled input,
+  // faded/tooltipped button) AND at the top of every submit handler —
+  // the handler check is what actually matters; the UI state exists so
+  // a blocked user sees why, not just that nothing happened.
+  const canSend = hasOnboarded;
+
   const handleDeleteConfirmedOnCurrentChat = (deletedId: string) => {
     if (chatId && chatId === deletedId) {
       router.push("/");
@@ -465,6 +472,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }, [chatId, activeView, user]);
 
   function handleInitialSubmit(textToSubmit?: string) {
+    if (!canSend) return;
     const message = (textToSubmit || followUpText || introText).trim();
     if (message.length < 3) return;
     setFollowUpText("");
@@ -686,6 +694,11 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   function handleIntroSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Blocked until onboarding is complete — the text stays exactly as
+    // typed in the box, nothing is saved or navigated. This is the
+    // authoritative check; the disabled input/button are just the
+    // visible half of it.
+    if (!canSend) return;
     const submittedText = (
       userHasEdited ? introText : introText || typewriter.displayText
     ).trim();
@@ -785,6 +798,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }
 
   function handleAnswer(answer: string) {
+    if (!canSend) return;
     if (!currentQuestion) return;
     // Don't pre-assign the answer to currentQuestion.slot client-side —
     // a vague-branch answer (a suggestion card) may not actually be
@@ -804,6 +818,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }
 
   function handleSkipAll() {
+    if (!canSend) return;
     if (history.length === 0) return;
     dispatchScout(slots);
   }
@@ -992,6 +1007,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
   async function handleFollowUp(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSend) return;
     const msg = followUpText.trim();
     if (!msg) return;
 
@@ -1113,6 +1129,29 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const headerDisplayName =
     profile?.display_name ?? localDisplayName ?? googleName ?? user?.email ?? "Account";
   const headerInitial = headerDisplayName.charAt(0).toUpperCase();
+
+  // ---------- HYDRATING A DIRECT CHAT NAVIGATION ----------
+  // Landing-page submit does saveChatState(...) then router.push to
+  // /chat/[id], which fully remounts this component — phase resets to
+  // its initial "intro" and the tree/history are empty again until the
+  // hydration effect above finishes its async loadState() and calls
+  // askForNextQuestionRef. Without this guard, that gap satisfies
+  // `!hasStarted && history.length === 0` below and the just-submitted
+  // chat would flash (or, if hydration is slow/stalls, visibly stick)
+  // back on the landing view — the exact "left side blank, no thinking
+  // state" bug this guard closes. Scoped to chatId-with-not-yet-
+  // hydrated only, so it never affects the real landing page (no
+  // chatId) or an already-hydrated chat.
+  if (chatId && !hasHydrated) {
+    return (
+      <main className="flex h-screen w-full items-center justify-center overflow-hidden">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-foreground" />
+          <span className="text-sm text-foreground-muted">Loading chat…</span>
+        </div>
+      </main>
+    );
+  }
 
   // ---------- INTRO / LANDING VIEW ----------
   if (!hasStarted && history.length === 0) {
@@ -1269,6 +1308,12 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             Autonomous location scouting for film &amp; commercial productions.
           </p>
 
+          {!canSend && (
+            <p className="mt-2 text-xs text-foreground-muted">
+              Please complete onboarding to start sending messages.
+            </p>
+          )}
+
           <BorderGlow className="mt-6 w-full" {...GLOW_PROPS}>
             <form
               onSubmit={handleIntroSubmit}
@@ -1305,7 +1350,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   userHasEdited ? "Describe the scene you're scouting..." : ""
                 }
                 autoFocus
-                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none ${
+                disabled={!canSend}
+                className={`h-12 flex-1 border-0 bg-transparent px-3 text-base transition-colors duration-300 placeholder:text-neutral-500 focus-visible:ring-0 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                   (userHasEdited
                     ? introText
                     : introText || typewriter.displayText) ||
@@ -1314,18 +1360,27 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                     : "text-white/85"
                 }`}
               />
-              <Button
-                type="submit"
-                disabled={
-                  (userHasEdited
-                    ? introText
-                    : introText || typewriter.displayText
-                  ).trim().length < 1
+              <span
+                title={
+                  canSend
+                    ? undefined
+                    : "Complete onboarding to start sending messages"
                 }
-                className="h-10 w-10 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
               >
-                <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
-              </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    !canSend ||
+                    (userHasEdited
+                      ? introText
+                      : introText || typewriter.displayText
+                    ).trim().length < 1
+                  }
+                  className="h-10 w-10 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                >
+                  <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
+                </Button>
+              </span>
             </form>
           </BorderGlow>
 
@@ -1776,6 +1831,11 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                 {history.length === 0 &&
                   (phase === "intro" || phase === "clarifying") && (
                     <div className="shrink-0">
+                      {!canSend && (
+                        <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
+                          Please complete onboarding to start sending messages.
+                        </div>
+                      )}
                       <div className="px-6 pb-6 pt-2">
                         <BorderGlow {...GLOW_PROPS}>
                           <form
@@ -1793,17 +1853,27 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               }}
                               placeholder="Describe the scene you're scouting..."
                               autoFocus
-                              className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none"
+                              disabled={!canSend}
+                              className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                             />
-                            <Button
-                              type="submit"
-                              disabled={
-                                (followUpText || introText).trim().length < 3
+                            <span
+                              title={
+                                canSend
+                                  ? undefined
+                                  : "Complete onboarding to start sending messages"
                               }
-                              className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
                             >
-                              <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-                            </Button>
+                              <Button
+                                type="submit"
+                                disabled={
+                                  !canSend ||
+                                  (followUpText || introText).trim().length < 3
+                                }
+                                className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                              >
+                                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                              </Button>
+                            </span>
                           </form>
                         </BorderGlow>
                       </div>
@@ -1822,6 +1892,11 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                           onJumpToLatest={() => setActiveRunId(latestRun.id)}
                         />
                       )}
+                      {!canSend && phase === "clarifying" && (
+                        <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
+                          Please complete onboarding to start sending messages.
+                        </div>
+                      )}
                       <div className="px-6 pb-6 pt-2 space-y-3">
                         {phase === "clarifying" && currentQuestion ? (
                           currentQuestion.type === "choice" ? (
@@ -1832,11 +1907,13 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 onAnswer={handleAnswer}
                                 onSkipAll={handleSkipAll}
                                 prefill={suggestionPrefill}
+                                disabled={!canSend}
                               />
                               <BorderGlow {...GLOW_PROPS}>
                                 <form
                                   onSubmit={(e) => {
                                     e.preventDefault();
+                                    if (!canSend) return;
                                     if (followUpText.trim().length === 0)
                                       return;
                                     const message = followUpText.trim();
@@ -1851,18 +1928,30 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                       setFollowUpText(e.target.value)
                                     }
                                     placeholder="Or type your own answer..."
-                                    className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none"
+                                    disabled={!canSend}
+                                    className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                   />
-                                  <Button
-                                    type="submit"
-                                    disabled={followUpText.trim().length === 0}
-                                    className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                                  <span
+                                    title={
+                                      canSend
+                                        ? undefined
+                                        : "Complete onboarding to start sending messages"
+                                    }
                                   >
-                                    <ArrowUp
-                                      className="h-4 w-4"
-                                      strokeWidth={2.5}
-                                    />
-                                  </Button>
+                                    <Button
+                                      type="submit"
+                                      disabled={
+                                        !canSend ||
+                                        followUpText.trim().length === 0
+                                      }
+                                      className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                                    >
+                                      <ArrowUp
+                                        className="h-4 w-4"
+                                        strokeWidth={2.5}
+                                      />
+                                    </Button>
+                                  </span>
                                 </form>
                               </BorderGlow>
                             </>
@@ -1873,6 +1962,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               onAnswer={handleAnswer}
                               onSkipAll={handleSkipAll}
                               prefill={suggestionPrefill}
+                              disabled={!canSend}
                             />
                           )
                         ) : phase === "clarifying" ? (
@@ -1882,6 +1972,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             <form
                               onSubmit={(e) => {
                                 e.preventDefault();
+                                if (!canSend) return;
                                 const message = followUpText.trim();
                                 if (!message) return;
                                 setFollowUpText("");
@@ -1911,18 +2002,27 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                                 }
                                 placeholder="Type a message..."
                                 autoFocus
-                                className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none"
+                                disabled={!canSend}
+                                className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                               />
-                              <Button
-                                type="submit"
-                                disabled={followUpText.trim().length === 0}
-                                className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                              <span
+                                title={
+                                  canSend
+                                    ? undefined
+                                    : "Complete onboarding to start sending messages"
+                                }
                               >
-                                <ArrowUp
-                                  className="h-4 w-4"
-                                  strokeWidth={2.5}
-                                />
-                              </Button>
+                                <Button
+                                  type="submit"
+                                  disabled={!canSend || followUpText.trim().length === 0}
+                                  className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                                >
+                                  <ArrowUp
+                                    className="h-4 w-4"
+                                    strokeWidth={2.5}
+                                  />
+                                </Button>
+                              </span>
                             </form>
                           </BorderGlow>
                         ) : (
@@ -1963,11 +2063,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         onJumpToLatest={() => setActiveRunId(latestRun.id)}
                       />
                     )}
+                    {!canSend && (
+                      <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
+                        Please complete onboarding to start sending messages.
+                      </div>
+                    )}
                     <div className="px-6 pb-6 pt-2">
                       <BorderGlow {...GLOW_PROPS}>
                         <form
                           onSubmit={(e) => {
                             e.preventDefault();
+                            if (!canSend) return;
                             if (followUpText.trim().length === 0) return;
                             const message = followUpText.trim();
                             setFollowUpText("");
@@ -2017,15 +2123,24 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             onChange={(e) => setFollowUpText(e.target.value)}
                             placeholder="Type a message to continue..."
                             autoFocus
-                            className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none"
+                            disabled={!canSend}
+                            className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           />
-                          <Button
-                            type="submit"
-                            disabled={followUpText.trim().length === 0}
-                            className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                          <span
+                            title={
+                              canSend
+                                ? undefined
+                                : "Complete onboarding to start sending messages"
+                            }
                           >
+                            <Button
+                              type="submit"
+                              disabled={!canSend || followUpText.trim().length === 0}
+                              className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                            >
                             <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
                           </Button>
+                          </span>
                         </form>
                       </BorderGlow>
                     </div>
@@ -2040,6 +2155,11 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                         isViewingLatest={false}
                         onJumpToLatest={() => setActiveRunId(latestRun.id)}
                       />
+                    )}
+                    {!canSend && (
+                      <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
+                        Please complete onboarding to start sending messages.
+                      </div>
                     )}
                     {(() => {
                       const shownLocations =
@@ -2077,24 +2197,33 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               value={followUpText}
                               onChange={(e) => setFollowUpText(e.target.value)}
                               placeholder="Type a message to continue..."
-                              disabled={isFollowingUp || isClassifyingCardChat}
-                              className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:opacity-50"
+                              disabled={!canSend || isFollowingUp || isClassifyingCardChat}
+                              className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                             />
-                            <Button
-                              type="submit"
-                              disabled={
-                                followUpText.trim().length === 0 ||
-                                isFollowingUp ||
-                                isClassifyingCardChat
+                            <span
+                              title={
+                                canSend
+                                  ? undefined
+                                  : "Complete onboarding to start sending messages"
                               }
-                              className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
                             >
-                              {isFollowingUp || isClassifyingCardChat ? (
-                                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-black" />
-                              ) : (
-                                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-                              )}
-                            </Button>
+                              <Button
+                                type="submit"
+                                disabled={
+                                  !canSend ||
+                                  followUpText.trim().length === 0 ||
+                                  isFollowingUp ||
+                                  isClassifyingCardChat
+                                }
+                                className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
+                              >
+                                {isFollowingUp || isClassifyingCardChat ? (
+                                  <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-black" />
+                                ) : (
+                                  <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+                                )}
+                              </Button>
+                            </span>
                           </div>
                         </form>
                       </BorderGlow>

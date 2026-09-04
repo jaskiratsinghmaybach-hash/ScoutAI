@@ -10,11 +10,13 @@ export function QuestionCard({
   onAnswer,
   onSkipAll,
   prefill,
+  disabled,
 }: {
   question: ClarifyQuestion;
   onAnswer: (answer: string) => void;
   onSkipAll: () => void;
   prefill?: string;
+  disabled?: boolean;
 }) {
   const [textValue, setTextValue] = useState(prefill ?? "");
 
@@ -24,6 +26,7 @@ export function QuestionCard({
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (disabled) return;
     if (textValue.trim().length === 0) return;
     onAnswer(textValue.trim());
     setTextValue("");
@@ -34,13 +37,18 @@ export function QuestionCard({
       {question.type === "choice" && question.options ? (
         <div className="flex flex-wrap gap-2">
           {question.options.map((opt) => (
-            <button
+            <span
               key={opt}
-              onClick={() => onAnswer(opt)}
-              className="rounded-full bg-neutral-800/60 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95"
+              title={disabled ? "Complete onboarding to start sending messages" : undefined}
             >
-              {opt}
-            </button>
+              <button
+                onClick={() => !disabled && onAnswer(opt)}
+                disabled={disabled}
+                className="rounded-full bg-neutral-800/60 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-800/60 disabled:hover:text-neutral-300"
+              >
+                {opt}
+              </button>
+            </span>
           ))}
         </div>
       ) : (
@@ -60,22 +68,26 @@ export function QuestionCard({
               onChange={(e) => setTextValue(e.target.value)}
               placeholder="Type your answer..."
               autoFocus
-              className="font-script h-10 flex-1 border-0 bg-transparent px-2 text-sm text-white/90 placeholder:text-foreground-muted focus:outline-none"
+              disabled={disabled}
+              className="font-script h-10 flex-1 border-0 bg-transparent px-2 text-sm text-white/90 placeholder:text-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
-            <button
-              type="submit"
-              disabled={textValue.trim().length === 0}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </button>
+            <span title={disabled ? "Complete onboarding to start sending messages" : undefined}>
+              <button
+                type="submit"
+                disabled={disabled || textValue.trim().length === 0}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            </span>
           </form>
         </BorderGlow>
       )}
 
       <button
-        onClick={onSkipAll}
-        className="text-xs text-foreground-muted underline underline-offset-2 hover:text-foreground"
+        onClick={() => !disabled && onSkipAll()}
+        disabled={disabled}
+        className="text-xs text-foreground-muted underline underline-offset-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-foreground-muted"
       >
         Skip all — use my answers so far
       </button>
