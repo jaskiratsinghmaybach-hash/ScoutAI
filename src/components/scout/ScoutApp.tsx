@@ -1190,7 +1190,17 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }
 
   // ---------- INTRO / LANDING VIEW ----------
-  if (!hasStarted && history.length === 0) {
+  // Only the true landing page (no chatId in the URL at all) uses this
+  // full-bleed layout. A chat that was just created — including one
+  // holding nothing but a pending pre-onboarding draft, so history is
+  // still empty — must always render the split chat-view layout below
+  // instead: that's where the right-panel onboarding flow actually
+  // lives, and where the "fresh chat input bar" branch shows the
+  // draft text sitting unsent in the composer. Gating on chatId here
+  // (rather than on hasStarted/history alone) is what makes
+  // navigating to /chat/[id] actually show the split view immediately
+  // instead of bouncing back to a landing-page-shaped screen.
+  if (!chatId && !hasStarted && history.length === 0) {
     return (
       <main className="flex h-screen w-full overflow-hidden">
         {/* Inline collapsible chats column — matches the main chat view's
