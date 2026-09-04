@@ -2,19 +2,21 @@
 
 import { motion } from "framer-motion";
 import { PercentRing } from "./PercentRing";
-import { parsePercent } from "./location-card-utils";
 import type { Location } from "@/types";
 
 /**
  * All four values come straight from the scout agent's own output on
- * this Location (score, mood_match, era_match, avg_daily_cost) — none
- * of this is computed or guessed client-side. mood_match/era_match are
- * parsed from their "NN%"-style strings; if a value doesn't parse, the
- * ring shows an explicit empty state rather than a fake number.
+ * this Location (score, mood_fit_percent, era_fit_percent,
+ * avg_daily_cost) — none of this is computed or guessed client-side.
+ * mood_fit_percent/era_fit_percent are numbers the agent rates directly
+ * (separate from the mood_match/era_match prose explanations shown
+ * elsewhere); if the agent didn't return a valid number for this
+ * location, the ring shows an explicit empty state rather than a fake
+ * percentage.
  */
 export function LocationStats({ location }: { location: Location }) {
-  const mood = parsePercent(location.mood_match);
-  const era = parsePercent(location.era_match);
+  const mood = location.mood_fit_percent;
+  const era = location.era_fit_percent;
 
   return (
     <motion.div

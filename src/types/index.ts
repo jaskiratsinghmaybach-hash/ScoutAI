@@ -32,6 +32,12 @@ export interface Location {
   score: number; // 0-100 match score
   mood_match: string;
   era_match: string;
+  // Numeric 0-100 fit scores the agent assigns explicitly (separate from
+  // the mood_match/era_match prose explanations above). null when the
+  // agent didn't return a valid number for this location, so the UI can
+  // show an honest empty state instead of a fabricated percentage.
+  mood_fit_percent: number | null;
+  era_fit_percent: number | null;
   permit_info: string;
   permit_url?: string;
   avg_daily_cost: string;

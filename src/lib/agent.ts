@@ -105,11 +105,33 @@ async function runSearches(
   return results;
 }
 
+// Coerces the agent's mood_fit_percent/era_fit_percent output into a
+// clean 0-100 number. Accepts a JSON number or a plain numeric string
+// (e.g. "85") since models occasionally quote numbers despite the
+// schema — but returns null (never a guessed number) for anything else,
+// including prose, so the UI can render an honest empty state rather
+// than a fabricated percentage.
+function normalizeFitPercent(value: unknown): number | null {
+  let num: number;
+  if (typeof value === "number") {
+    num = value;
+  } else if (typeof value === "string" && /^\s*\d+(\.\d+)?\s*$/.test(value)) {
+    num = parseFloat(value);
+  } else {
+    return null;
+  }
+  if (!Number.isFinite(num)) return null;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
 function normalizeLocations(raw: unknown): Location[] {
   if (!Array.isArray(raw)) return [];
 
   return raw.map((item, i) => {
-    const loc = item as Partial<Location>;
+    const loc = item as Partial<Location> & {
+      mood_fit_percent?: unknown;
+      era_fit_percent?: unknown;
+    };
     return {
       id: loc.id ?? `location-${i}`,
       name: loc.name ?? "Unknown location",
@@ -118,6 +140,8 @@ function normalizeLocations(raw: unknown): Location[] {
       score: typeof loc.score === "number" ? loc.score : 0,
       mood_match: loc.mood_match ?? "",
       era_match: loc.era_match ?? "",
+      mood_fit_percent: normalizeFitPercent(loc.mood_fit_percent),
+      era_fit_percent: normalizeFitPercent(loc.era_fit_percent),
       permit_info: loc.permit_info ?? "",
       permit_url: loc.permit_url,
       avg_daily_cost: loc.avg_daily_cost ?? "",
@@ -167,7 +191,9 @@ Return a JSON array of exactly 4 location objects. Each must include:
   "country": "Country",
   "score": "An integer 0-100. Use the FULL range honestly — a location that's merely acceptable should score 40-60, a strong match 65-80, and only an exceptional, near-perfect match for ALL stated requirements (mood, era, budget, region, special requirements) should score above 85. Do not default to high scores out of politeness. If a location is missing key information from search results, that uncertainty should also lower its score.",
   "mood_match": "Explanation of mood fit",
+  "mood_fit_percent": "An integer 0-100 rating of how well this location's mood/atmosphere matches the requested mood. Judge honestly and independently per location — these should genuinely differ across the 4 locations, not cluster together. This is a separate, standalone judgment from mood_match's prose explanation and from the overall score field.",
   "era_match": "Explanation of era/period fit",
+  "era_fit_percent": "An integer 0-100 rating of how well this location's architecture/period fits the requested era. Judge honestly and independently per location — if the era wasn't specified or doesn't clearly apply, use your honest best judgment rather than defaulting to 100. This is a separate, standalone judgment from era_match's prose explanation and from the overall score field.",
   "permit_info": "Real permit process details",
   "permit_url": "ONLY include this field if you found an actual URL in the search results above for this specific location's permit process. Copy the exact URL from the search data. If no real permit URL was found in the search results, OMIT this field entirely (do not invent or guess a URL).",
   "avg_daily_cost": "Estimated daily location fee",
@@ -178,7 +204,7 @@ Return a JSON array of exactly 4 location objects. Each must include:
   "image_query": "Specific search query to find a representative photo",
   "scene_description": "2-3 sentences describing the physical environment and setting itself — what it actually looks and feels like on the ground (architecture, lighting, textures, surroundings, ambient sound/activity). This is about the PLACE, not why it fits the brief (that's mood_match/era_match) and not shooting logistics (that's logistics_notes) — describe it the way a scout would describe the location to a director who has never seen it."
 }
-Before assigning scores, explicitly compare each location against every stated requirement (mood, era, budget fit, region, special requirements) and penalize mismatches or unknowns. Scores should genuinely differ across the 4 locations based on real fit differences — avoid clustering all scores in the 80s-90s range.
+Before assigning scores, explicitly compare each location against every stated requirement (mood, era, budget fit, region, special requirements) and penalize mismatches or unknowns. Scores should genuinely differ across the 4 locations based on real fit differences — avoid clustering all scores in the 80s-90s range. The same applies to mood_fit_percent and era_fit_percent: rate each honestly and independently per location instead of copying the overall score or defaulting every location to the same number.
 Base your response on the actual search data. Only return the JSON array.`;
 
   const text = await generateWithRetry(model, prompt);
