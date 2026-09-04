@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion } from "framer-motion";
@@ -156,10 +156,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   const [thinkingMessage, setThinkingMessage] = useState<string>(
     THINKING_MESSAGES[0],
   );
-  function setThinkingPhase() {
+  const setThinkingPhase = useCallback(() => {
     setThinkingMessage(pickRandomThinkingMessage());
     setPhase("thinking");
-  }
+  }, []);
   const [introText, setIntroText] = useState("");
   const [userHasEdited, setUserHasEdited] = useState(false);
 
@@ -327,19 +327,290 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   }, [chatId, hasHydrated, rightPanelRunId]);
 
 
-  // askForNextQuestion is defined further down in the component (it's
-  // large and depends on several handlers below it). The hydration
-  // effect needs to call it on mount, before its declaration would be
-  // reached in source order. A function declaration IS hoisted and this
-  // is safe at runtime (the effect only fires after the component body
-  // finishes evaluating once), but react-hooks/immutability can't prove
-  // that statically. Routing the call through a ref — updated via a
-  // plain assignment in an effect after askForNextQuestion is declared —
-  // gives the linter a pattern it can verify, and also protects against
-  // any future refactor accidentally introducing real staleness here.
-  const askForNextQuestionRef = useRef<
-    ((history: ConversationTurn[], slots: SlotState) => Promise<void>) | null
-  >(null);
+  const generateChatTitle = useCallback(
+    async (
+      finalSlots: SlotState,
+      currentHistory: ConversationTurn[],
+    ) => {
+      if (!chatId) return;
+      try {
+        const res = await fetch("/api/title", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            history: currentHistory,
+            description: finalSlots.description,
+          }),
+        });
+        if (!res.ok) return;
+        const { title: aiTitle } = await res.json();
+        if (aiTitle && aiTitle.trim().length > 0) {
+          setTitle(aiTitle.trim());
+        }
+      } catch (err) {
+        console.error("Title generation failed:", err);
+        // Silently fail — fallback title already set from description
+      }
+    },
+    [chatId],
+  );
+
+  const dispatchScout = useCallback(
+    async (
+      finalSlots: SlotState,
+      prompt?: string,
+      historyContext?: ConversationTurn[],
+      runKind: "search" | "refine" = "search",
+    ) => {
+      setPhase("running");
+      setError(null);
+      wasStoppedRef.current = false;
+      stoppedDuringRef.current = "research";
+
+      lastScoutArgsRef.current = { finalSlots, priorContext: prompt };
+
+      const runId = generateChatId();
+      let isFirstRun = false;
+      const activeHistory = historyContext || [];
+      const lastTurn = activeHistory[activeHistory.length - 1];
+
+      const initialRun: ScoutRun = {
+        id: runId,
+        steps: [
+          {
+            step: 1,
+            action: "Synthesizing requirements",
+            detail: prompt
+              ? `Refining scene: "${prompt}"`
+              : "Converting brief to scene profile",
+            status: "running",
+          },
+        ],
+        packet: null,
+        triggerMessageIndex: activeHistory.length - 1,
+        triggerMessageContent: lastTurn ? lastTurn.content : "",
+        runKind,
+      };
+
+      setRuns((prev) => {
+        isFirstRun = prev.length === 0;
+        return [...prev, initialRun];
+      });
+      setActiveRunId(runId);
+      setInFlightRunId(runId);
+      setFocusedRunId(runId);
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const res = await fetch("/api/scout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: finalSlots.description,
+            mood: finalSlots.mood,
+            era: finalSlots.era,
+            budget: (finalSlots.budget || "indie") as
+              | "micro"
+              | "indie"
+              | "mid"
+              | "studio",
+            region: finalSlots.region,
+            requirements: finalSlots.requirements
+              ? finalSlots.requirements.split(",").map((r: string) => r.trim())
+              : [],
+            priorContext: prompt,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          throw new Error(
+            `Failed to start scout run (status ${res.status}: ${detail || res.statusText || "no body"})`,
+          );
+        }
+
+        const { runId: scoutRunId, error: startError } = (await res.json()) as {
+          runId?: string;
+          error?: string;
+        };
+        if (!scoutRunId) {
+          throw new Error(startError || "Scout run did not return a run id");
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          const poll = async () => {
+            if (controller.signal.aborted) {
+              resolve();
+              return;
+            }
+            try {
+              const statusRes = await fetch(`/api/scout/${scoutRunId}`, {
+                signal: controller.signal,
+              });
+              if (!statusRes.ok) {
+                throw new Error(`Status check failed (${statusRes.status})`);
+              }
+              const data = (await statusRes.json()) as {
+                status: "running" | "done" | "error";
+                steps: typeof initialRun.steps;
+                packet: ScoutRun["packet"];
+                error: string | null;
+              };
+
+              setRuns((prev) =>
+                prev.map((r) => (r.id === runId ? { ...r, steps: data.steps } : r)),
+              );
+
+              if (data.status === "done") {
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                }
+                setRuns((prev) =>
+                  prev.map((r) => {
+                    if (r.id !== runId) return r;
+                    const finishedSteps = r.steps.map((s) => ({
+                      ...s,
+                      status: s.status === "running" ? ("done" as const) : s.status,
+                    }));
+                    return { ...r, steps: finishedSteps, packet: data.packet };
+                  }),
+                );
+                setPhase("done");
+
+                // Generate AI title only on the FIRST completed run, and only if not already custom-renamed
+                if (isFirstRun) {
+                  generateChatTitle(finalSlots, activeHistory);
+                }
+                resolve();
+              } else if (data.status === "error") {
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                }
+                setError(data.error || "Scout pipeline failed");
+                setPhase("clarifying");
+                resolve();
+              }
+            } catch (err) {
+              if (pollTimerRef.current) {
+                clearInterval(pollTimerRef.current);
+                pollTimerRef.current = null;
+              }
+              reject(err);
+            }
+          };
+
+          poll();
+          pollTimerRef.current = setInterval(poll, 2000);
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setPhase("stopped");
+          return;
+        }
+        console.error(err);
+        setError(err instanceof Error ? err.message : "Scout pipeline failed");
+        setPhase("clarifying");
+      } finally {
+        abortControllerRef.current = null;
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      }
+    },
+    [generateChatTitle],
+  );
+
+  const askForNextQuestion = useCallback(
+    async (
+      updatedHistory: ConversationTurn[],
+      updatedSlots: SlotState,
+    ) => {
+      setError(null);
+      wasStoppedRef.current = false;
+      stoppedDuringRef.current = "clarify";
+      setThinkingPhase();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      try {
+        const res = await fetch("/api/clarify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ history: updatedHistory, slots: updatedSlots }),
+          signal: controller.signal,
+        });
+
+        if (wasStoppedRef.current) {
+          setPhase("stopped");
+          return;
+        }
+
+        const data = await res.json();
+
+        if (wasStoppedRef.current) {
+          setPhase("stopped");
+          return;
+        }
+
+        const mergedSlots = { ...updatedSlots, ...data.updated_slots };
+        setSlots(mergedSlots);
+
+        const isChatOnly =
+          (data.message_type === "greeting" ||
+            data.message_type === "small_talk" ||
+            data.message_type === "off_topic") &&
+          !data.next_question;
+
+        if (data.next_question) {
+          setCurrentQuestion(data.next_question);
+          setTree((prevTree) => {
+            const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+            return addMessage(
+              prevTree,
+              leafId,
+              "assistant",
+              data.next_question.text,
+            ).tree;
+          });
+          setPhase("clarifying");
+        } else if (isChatOnly) {
+          setTree((prevTree) => {
+            const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
+            return addMessage(
+              prevTree,
+              leafId,
+              "assistant",
+              data.chat_reply || "Hey! What scene are you scouting?",
+            ).tree;
+          });
+          setCurrentQuestion(null);
+          setPhase("clarifying");
+        } else {
+          dispatchScout(mergedSlots, undefined, updatedHistory);
+        }
+      } catch (err) {
+        if (
+          wasStoppedRef.current ||
+          (err instanceof DOMException && err.name === "AbortError")
+        ) {
+          setPhase("stopped");
+          return;
+        }
+        setError(
+          err instanceof Error ? err.message : "Failed to continue conversation",
+        );
+        setPhase("clarifying");
+      } finally {
+        abortControllerRef.current = null;
+      }
+    },
+    [dispatchScout, setThinkingPhase],
+  );
 
   // Sidebar defaults: open on the landing page, closed once any chat
   // (new or existing) actually starts — matching the main conversation
@@ -382,9 +653,16 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
 
       if (activeView === "account") {
         if (user) {
-          stored = await fetchAccountChatState(user.id, id);
+          try {
+            stored = await fetchAccountChatState(user.id, id);
+          } catch {
+            stored = null;
+          }
+          if (!stored) {
+            stored = loadChatState(id);
+          }
         } else {
-          stored = null;
+          stored = loadChatState(id);
         }
       } else {
         // activeView === "local": existing localStorage loader untouched
@@ -478,7 +756,12 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         stored.history.length === 1 &&
         stored.history[0].role === "user"
       ) {
-        askForNextQuestionRef.current?.(stored.history, stored.slots);
+        setThinkingPhase();
+        try {
+          await askForNextQuestion(stored.history, stored.slots);
+        } catch {
+          setPhase("clarifying");
+        }
       } else if (stored.history.length > 0) {
         setPhase("clarifying");
       }
@@ -489,7 +772,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     return () => {
       isCancelled = true;
     };
-  }, [chatId, activeView, user]);
+  }, [chatId, activeView, user, askForNextQuestion, setThinkingPhase]);
 
   // Once onboarding completes, a pending draft has done its job — the
   // text is already sitting in introText for the user to review and
@@ -529,104 +812,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   }, [chatId, history, slots, runs, title, user, reportWrite]);
 
-  async function askForNextQuestion(
-    updatedHistory: ConversationTurn[],
-    updatedSlots: SlotState,
-  ) {
-    setError(null);
-    wasStoppedRef.current = false;
-    stoppedDuringRef.current = "clarify";
-    // Must happen synchronously, before the await below — this is what
-    // was missing before. Without it, `phase` stays whatever it was
-    // (often still "intro" right after hydration) for the entire
-    // /api/clarify round trip, and no render branch in this file
-    // matches "history has content but phase is intro" — that gap
-    // between tree hydrating and phase catching up was the empty
-    // input area / missing "thinking" indicator bug.
-    setThinkingPhase();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    try {
-      const res = await fetch("/api/clarify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ history: updatedHistory, slots: updatedSlots }),
-        signal: controller.signal,
-      });
 
-      if (wasStoppedRef.current) {
-        setPhase("stopped");
-        return;
-      }
 
-      const data = await res.json();
-
-      if (wasStoppedRef.current) {
-        setPhase("stopped");
-        return;
-      }
-
-      const mergedSlots = { ...updatedSlots, ...data.updated_slots };
-      setSlots(mergedSlots);
-
-      const isChatOnly =
-        (data.message_type === "greeting" ||
-          data.message_type === "small_talk" ||
-          data.message_type === "off_topic") &&
-        !data.next_question;
-
-      if (data.next_question) {
-        setCurrentQuestion(data.next_question);
-        setTree((prevTree) => {
-          const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
-          return addMessage(
-            prevTree,
-            leafId,
-            "assistant",
-            data.next_question.text,
-          ).tree;
-        });
-        setPhase("clarifying");
-      } else if (isChatOnly) {
-        // Small talk / greeting: reply in character and go back to
-        // waiting for the next message — never launch the scout pipeline.
-        setTree((prevTree) => {
-          const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
-          return addMessage(
-            prevTree,
-            leafId,
-            "assistant",
-            data.chat_reply || "Hey! What scene are you scouting?",
-          ).tree;
-        });
-        setCurrentQuestion(null);
-        setPhase("clarifying");
-      } else {
-        dispatchScout(mergedSlots, undefined, updatedHistory);
-      }
-    } catch (err) {
-      if (
-        wasStoppedRef.current ||
-        (err instanceof DOMException && err.name === "AbortError")
-      ) {
-        setPhase("stopped");
-        return;
-      }
-      setError(
-        err instanceof Error ? err.message : "Failed to continue conversation",
-      );
-      setPhase("clarifying");
-    } finally {
-      abortControllerRef.current = null;
-    }
-  }
-
-  // Keep the ref pointed at the latest askForNextQuestion so the
-  // hydration effect above (which runs before this declaration in
-  // source order) always calls a fresh, non-stale version.
-  useEffect(() => {
-    askForNextQuestionRef.current = askForNextQuestion;
-  });
 
   /**
    * Edits a past user message at the given history index. The edited
@@ -815,30 +1002,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     }
   };
 
-  async function generateChatTitle(
-    finalSlots: SlotState,
-    currentHistory: ConversationTurn[],
-  ) {
-    if (!chatId) return;
-    try {
-      const res = await fetch("/api/title", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          history: currentHistory,
-          description: finalSlots.description,
-        }),
-      });
-      if (!res.ok) return;
-      const { title: aiTitle } = await res.json();
-      if (aiTitle && aiTitle.trim().length > 0) {
-        setTitle(aiTitle.trim());
-      }
-    } catch (err) {
-      console.error("Title generation failed:", err);
-      // Silently fail — fallback title already set from description
-    }
-  }
+
 
   function handleAnswer(answer: string) {
     if (!canSend) return;
@@ -863,192 +1027,10 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   function handleSkipAll() {
     if (!canSend) return;
     if (history.length === 0) return;
-    dispatchScout(slots);
+    dispatchScout(slots, undefined, history);
   }
 
-  async function dispatchScout(
-    finalSlots: SlotState,
-    prompt?: string,
-    historyContext?: ConversationTurn[],
-    runKind: "search" | "refine" = "search",
-  ) {
-    setPhase("running");
-    setError(null);
-    wasStoppedRef.current = false;
-    stoppedDuringRef.current = "research";
 
-    lastScoutArgsRef.current = { finalSlots, priorContext: prompt };
-
-    const runId = generateChatId();
-    const isFirstRun = runs.length === 0;
-    const activeHistory = historyContext || history;
-    const lastTurn = activeHistory[activeHistory.length - 1];
-
-    const initialRun: ScoutRun = {
-      id: runId,
-      steps: [
-        {
-          step: 1,
-          action: "Synthesizing requirements",
-          detail: prompt
-            ? `Refining scene: "${prompt}"`
-            : "Converting brief to scene profile",
-          status: "running",
-        },
-      ],
-      packet: null,
-      triggerMessageIndex: activeHistory.length - 1,
-      triggerMessageContent: lastTurn ? lastTurn.content : "",
-      runKind,
-    };
-
-    setRuns((prev) => [...prev, initialRun]);
-    setActiveRunId(runId);
-    // New run becomes the one tracked by the top-left mini pill —
-    // resets/replaces whatever the pill was previously tracking, per
-    // spec ("when a NEW run starts, [pill] resets to track the new
-    // one").
-    setInFlightRunId(runId);
-    // Show the live Agent Activity panel immediately so the user can
-    // see that work has started without needing to click the pill.
-    setFocusedRunId(runId);
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    // dispatchScout no longer holds one HTTP request open for the
-    // whole pipeline (that was one continuously-billed Vercel
-    // invocation, capped at 60s total regardless of how the backend
-    // internally split its work — see /api/scout/route.ts for the
-    // full explanation). It now POSTs once to kick the pipeline off
-    // server-side, gets back a scoutRunId, and polls GET
-    // /api/scout/[scoutRunId] every couple seconds for progress until
-    // status is "done" or "error". Every setRuns/setPhase/setError
-    // call below fires at the exact same points, with the same
-    // shapes, as the old SSE "step"/"complete"/"error" handlers did —
-    // only the transport underneath changed.
-    try {
-      const res = await fetch("/api/scout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: finalSlots.description,
-          mood: finalSlots.mood,
-          era: finalSlots.era,
-          budget: (finalSlots.budget || "indie") as
-            | "micro"
-            | "indie"
-            | "mid"
-            | "studio",
-          region: finalSlots.region,
-          requirements: finalSlots.requirements
-            ? finalSlots.requirements.split(",").map((r: string) => r.trim())
-            : [],
-          priorContext: prompt,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(
-          `Failed to start scout run (status ${res.status}: ${detail || res.statusText || "no body"})`,
-        );
-      }
-
-      const { runId: scoutRunId, error: startError } = (await res.json()) as {
-        runId?: string;
-        error?: string;
-      };
-      if (!scoutRunId) {
-        throw new Error(startError || "Scout run did not return a run id");
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        const poll = async () => {
-          if (controller.signal.aborted) {
-            resolve();
-            return;
-          }
-          try {
-            const statusRes = await fetch(`/api/scout/${scoutRunId}`, {
-              signal: controller.signal,
-            });
-            if (!statusRes.ok) {
-              throw new Error(`Status check failed (${statusRes.status})`);
-            }
-            const data = (await statusRes.json()) as {
-              status: "running" | "done" | "error";
-              steps: typeof initialRun.steps;
-              packet: ScoutRun["packet"];
-              error: string | null;
-            };
-
-            setRuns((prev) =>
-              prev.map((r) => (r.id === runId ? { ...r, steps: data.steps } : r)),
-            );
-
-            if (data.status === "done") {
-              if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
-                pollTimerRef.current = null;
-              }
-              setRuns((prev) =>
-                prev.map((r) => {
-                  if (r.id !== runId) return r;
-                  const finishedSteps = r.steps.map((s) => ({
-                    ...s,
-                    status: s.status === "running" ? ("done" as const) : s.status,
-                  }));
-                  return { ...r, steps: finishedSteps, packet: data.packet };
-                }),
-              );
-              setPhase("done");
-
-              // Generate AI title only on the FIRST completed run, and only if not already custom-renamed
-              if (isFirstRun) {
-                generateChatTitle(finalSlots, activeHistory);
-              }
-              resolve();
-            } else if (data.status === "error") {
-              if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
-                pollTimerRef.current = null;
-              }
-              setError(data.error || "Scout pipeline failed");
-              setPhase("clarifying");
-              resolve();
-            }
-            // else "running" — keep polling on the existing interval
-          } catch (err) {
-            if (pollTimerRef.current) {
-              clearInterval(pollTimerRef.current);
-              pollTimerRef.current = null;
-            }
-            reject(err);
-          }
-        };
-
-        // Poll promptly once, then every 2s until done/error/aborted.
-        poll();
-        pollTimerRef.current = setInterval(poll, 2000);
-      });
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") {
-        setPhase("stopped");
-        return;
-      }
-      console.error(err);
-      setError(err instanceof Error ? err.message : "Scout pipeline failed");
-      setPhase("clarifying");
-    } finally {
-      abortControllerRef.current = null;
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    }
-  }
 
   function handleStop() {
     wasStoppedRef.current = true;
@@ -1217,7 +1199,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
   // /chat/[id], which fully remounts this component — phase resets to
   // its initial "intro" and the tree/history are empty again until the
   // hydration effect above finishes its async loadState() and calls
-  // askForNextQuestionRef. Without this guard, that gap satisfies
+  // askForNextQuestion directly. Without this guard, that gap satisfies
   // `!hasStarted && history.length === 0` below and the just-submitted
   // chat would flash (or, if hydration is slow/stalls, visibly stick)
   // back on the landing view — the exact "left side blank, no thinking
@@ -1957,7 +1939,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                   )}
 
                 {history.length > 0 &&
-                  (phase === "clarifying" ||
+                  (phase === "intro" ||
+                    phase === "clarifying" ||
                     phase === "thinking" ||
                     phase === "running") && (
                     <div className="shrink-0">
@@ -2041,7 +2024,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                               disabled={!canSend}
                             />
                           )
-                        ) : phase === "clarifying" ? (
+                        ) : phase === "clarifying" || phase === "intro" ? (
                           // Chat-only turn (greeting/small talk reply) — no
                           // question pending, just let the user keep talking.
                           <BorderGlow {...GLOW_PROPS}>
