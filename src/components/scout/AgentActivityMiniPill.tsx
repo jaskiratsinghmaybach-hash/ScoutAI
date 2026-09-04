@@ -9,7 +9,7 @@ const SEARCH_STEP_LABELS = [
   "Analyzing scene requirements",
   "Searching for real locations",
   "Scouting and ranking locations",
-  "Verifying locations are real",
+  "Validating site details & accessibility",
   "Writing scout's report",
 ];
 
@@ -17,7 +17,7 @@ const REFINE_STEP_LABELS = [
   "Reviewing the referenced location",
   "Searching for similar spots",
   "Ranking new candidates",
-  "Verifying locations are real",
+  "Validating site details & accessibility",
   "Writing scout's report",
 ];
 

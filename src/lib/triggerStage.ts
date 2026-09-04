@@ -16,6 +16,7 @@
 
 import { after } from "next/server";
 import type { NextRequest } from "next/server";
+import { markScoutRunError } from "@/lib/scoutRunStore";
 
 // Vercel sets VERCEL_URL (host only, no scheme) automatically for
 // every deployment — prod, preview, and branch alike. Locally there's
@@ -34,8 +35,8 @@ export function internalOrigin(req: NextRequest): string {
  * Errors from the triggered stage are its own responsibility to write
  * to the scout_runs row (via markScoutRunError) — this function only
  * guarantees the trigger fetch itself is *attempted*; network-level
- * failures to even reach the next stage are logged here as a
- * last-resort safety net.
+ * failures to even reach the next stage are logged here and marked in the DB
+ * as a last-resort safety net so the client doesn't pause/hang forever.
  */
 export function triggerStageInBackground(
   req: NextRequest,
@@ -57,9 +58,11 @@ export function triggerStageInBackground(
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         console.error(`[triggerStage] ${stagePath} responded ${res.status} for run ${runId}:`, text.slice(0, 500));
+        await markScoutRunError(runId, `Stage trigger error (${res.status}): ${text.slice(0, 150) || res.statusText}`);
       }
     } catch (err) {
       console.error(`[triggerStage] failed to reach ${stagePath} for run ${runId}:`, err);
+      await markScoutRunError(runId, `Failed to reach stage: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
 }

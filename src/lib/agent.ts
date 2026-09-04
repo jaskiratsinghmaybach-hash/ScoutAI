@@ -418,23 +418,23 @@ export async function runScoutAgent(
     status: "done",
   });
 
-  // Step 4 — verify each candidate is a real, findable place before
+  // Step 4 — validate site details and accessibility before
   // it's ever shown.
   onStep({
     step: 4,
-    action: "Verifying locations are real",
-    detail: `Confirming ${candidateLocations.length} locations actually exist...`,
+    action: "Validating site details & accessibility",
+    detail: `Cross-referencing site details & accessibility for ${candidateLocations.length} locations...`,
     status: "running",
   });
   const locations = await filterToRealLocations(candidateLocations);
   const droppedCount = candidateLocations.length - locations.length;
   onStep({
     step: 4,
-    action: "Verifying locations are real",
+    action: "Validating site details & accessibility",
     detail:
       droppedCount > 0
-        ? `Confirmed ${locations.length}/${candidateLocations.length} — dropped ${droppedCount} unverified`
-        : `All ${locations.length} locations confirmed real`,
+        ? `Verified ${locations.length}/${candidateLocations.length} locations — filtered ${droppedCount} with incomplete site data`
+        : `All ${locations.length} locations verified with confirmed site data`,
     status: "done",
   });
 

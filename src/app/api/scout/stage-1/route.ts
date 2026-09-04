@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateSearchQueries } from "@/lib/agent";
+import { generateSearchQueries, runSearches } from "@/lib/agent";
 import { getScoutRun, pushStep, updateScoutRun, markScoutRunError } from "@/lib/scoutRunStore";
 import { triggerStageInBackground } from "@/lib/triggerStage";
 import { requireInternalStageSecret } from "@/lib/internalAuth";
 
-// Stage 1 — generate search queries from the scene description (was
-// Step 1 in the old single-invocation runScoutAgent). Its own
-// maxDuration window only has to cover ONE Gemini call, comfortably
-// under 60s, then it hands off to stage-2 and returns.
+// Stage 1 — generates search queries and runs searches (Steps 1 & 2).
+// Combining Steps 1 and 2 (~4-6s total) keeps each stage well under Vercel's
+// 60s maxDuration while reducing internal proxy hops so the pipeline stays
+// safely beneath Vercel's 508 infinite loop detection threshold.
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -42,7 +42,27 @@ export async function POST(req: NextRequest) {
 
     await updateScoutRun(runId, { search_queries: searchQueries });
 
-    triggerStageInBackground(req, "/api/scout/stage-2", { runId }, runId);
+    // Step 2: Run searches in parallel
+    steps = await pushStep(runId, steps, {
+      step: 2,
+      action: "Searching for real locations",
+      detail: `Running ${searchQueries.length} searches via Parallel...`,
+      status: "running",
+    });
+
+    const searchResults = await runSearches(searchQueries);
+
+    await pushStep(runId, steps, {
+      step: 2,
+      action: "Searching for real locations",
+      detail: "Retrieved permit data, productions history, and cost signals",
+      status: "done",
+    });
+
+    await updateScoutRun(runId, { search_results: searchResults });
+
+    // Proceed to Stage 3 (synthesis)
+    triggerStageInBackground(req, "/api/scout/stage-3", { runId }, runId);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

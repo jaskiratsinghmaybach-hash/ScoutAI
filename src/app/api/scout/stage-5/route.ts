@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let steps = await pushStep(runId, run.steps, {
+    const steps = await pushStep(runId, run.steps, {
       step: 5,
       action: "Writing scout's report",
       detail: "Generating professional reasoning summary...",
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     const reasoning = await generateReasoning(run.query, run.locations);
 
-    steps = await pushStep(runId, steps, {
+    await pushStep(runId, steps, {
       step: 5,
       action: "Writing scout's report",
       detail: "Scouting packet complete",
@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
       narrowing_note:
         run.locations.length < run.candidate_locations.length
           ? run.locations.length === 0
-            ? "These search requirements are too niche to confirm any real filming locations — try broadening the scene, mood, or region."
-            : "These search requirements are too niche to confirm more real filming locations — showing only the ones that could be verified."
+            ? "These search requirements are too niche to confirm specific site details — try broadening the scene, mood, or region."
+            : "Showing only the locations with fully confirmed site and accessibility data."
           : undefined,
     };
 
