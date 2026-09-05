@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { RunHistoryDropdown } from "./RunHistoryDropdown";
 import { AgentActivityMiniPill } from "./AgentActivityMiniPill";
 import { AgentActivityFocused } from "./AgentActivityFocused";
+import { AgentTrace } from "./AgentTrace";
 import { LocationResultCard } from "./LocationResultCard";
 import { RightPanelIdle } from "./RightPanelIdle";
 import { OnboardingFlow } from "./OnboardingFlow";
@@ -61,6 +62,8 @@ export function ResultsPanel({
   onboardingPrefillName,
   onCompleteOnboarding,
   displayName,
+  onRetryRun,
+  isRetryingRunId,
 }: {
   runs: ScoutRun[];
   inFlightRun: ScoutRun | null;
@@ -81,6 +84,8 @@ export function ResultsPanel({
   onboardingPrefillName?: string | null;
   onCompleteOnboarding: (name: string) => void;
   displayName?: string | null;
+  onRetryRun?: (runId: string, options?: { forceFresh?: boolean }) => void;
+  isRetryingRunId?: string | null;
 }) {
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
   const focusedRun = runs.find((r) => r.id === focusedRunId) ?? null;
@@ -186,6 +191,19 @@ export function ResultsPanel({
               packet={selectedRun.packet}
               onSelectedLocationChange={setSelectedLocation}
             />
+          ) : selectedRun ? (
+            <div className="flex h-full w-full items-center justify-center p-8 overflow-y-auto">
+              <div className="w-full max-w-md">
+                <AgentTrace
+                  steps={selectedRun.steps}
+                  runKind={selectedRun.runKind}
+                  error={selectedRun.error}
+                  onRetry={(opts) => onRetryRun?.(selectedRun.id, opts)}
+                  isRetrying={isRetryingRunId === selectedRun.id}
+                  isDone={Boolean(selectedRun.packet)}
+                />
+              </div>
+            </div>
           ) : !hasOnboarded ? (
             <OnboardingFlow
               prefillName={onboardingPrefillName}
@@ -204,7 +222,12 @@ export function ResultsPanel({
 
         <AnimatePresence>
           {focusedRun && (
-            <AgentActivityFocused run={focusedRun} onClose={onCloseFocused} />
+            <AgentActivityFocused
+              run={focusedRun}
+              onClose={onCloseFocused}
+              onRetry={(opts) => onRetryRun?.(focusedRun.id, opts)}
+              isRetrying={isRetryingRunId === focusedRun.id}
+            />
           )}
         </AnimatePresence>
 

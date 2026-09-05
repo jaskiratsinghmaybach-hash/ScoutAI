@@ -1,5 +1,6 @@
 export interface ScoutRun {
   id: string;
+  serverRunId?: string;
   steps: AgentStep[];
   packet: ScoutingPacket | null;
   triggerMessageIndex: number;
@@ -12,6 +13,8 @@ export interface ScoutRun {
   // AgentActivityMiniPill.tsx. Defaults to "search" for older runs
   // that predate this field (optional, not required).
   runKind?: "search" | "refine";
+  status?: "running" | "done" | "error";
+  error?: string | null;
 }
 
 export interface SceneQuery {

@@ -21,9 +21,13 @@ import type { ScoutRun } from "@/types";
 export function AgentActivityFocused({
   run,
   onClose,
+  onRetry,
+  isRetrying,
 }: {
   run: ScoutRun;
   onClose: () => void;
+  onRetry?: (options?: { forceFresh?: boolean }) => void;
+  isRetrying?: boolean;
 }) {
   return (
     <motion.div
@@ -43,7 +47,14 @@ export function AgentActivityFocused({
         >
           <X className="h-3.5 w-3.5" />
         </button>
-        <AgentTrace steps={run.steps} runKind={run.runKind} />
+        <AgentTrace
+          steps={run.steps}
+          runKind={run.runKind}
+          error={run.error}
+          onRetry={onRetry}
+          isRetrying={isRetrying}
+          isDone={Boolean(run.packet)}
+        />
       </div>
     </motion.div>
   );

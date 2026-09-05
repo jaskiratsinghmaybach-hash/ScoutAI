@@ -107,3 +107,25 @@ export async function pushStep(runId: string, currentSteps: AgentStep[], step: A
 export async function markScoutRunError(runId: string, message: string): Promise<void> {
   await updateScoutRun(runId, { status: "error", error: message });
 }
+
+export async function findRecentScoutRun(queryText?: string): Promise<ScoutRunRow | null> {
+  const { data, error } = await db
+    .from("scout_runs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (error || !data || data.length === 0) return null;
+
+  if (queryText) {
+    const trimmed = queryText.trim().toLowerCase();
+    const match = data.find((r) =>
+      r.query?.description?.toLowerCase().includes(trimmed) ||
+      trimmed.includes(r.query?.description?.toLowerCase() ?? "")
+    );
+    if (match) return match as ScoutRunRow;
+  }
+
+  return data[0] as ScoutRunRow;
+}
+

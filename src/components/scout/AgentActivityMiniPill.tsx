@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ScoutRun } from "@/types";
 
@@ -38,10 +38,12 @@ export function AgentActivityMiniPill({
   onClick: () => void;
 }) {
   const isDone = run.packet !== null;
+  const hasError = Boolean(run.error || run.steps.some((s) => s.status === "error"));
   const runningStep = run.steps.find((s) => s.status === "running");
   const lastDoneStep = [...run.steps]
     .filter((s) => s.status === "done")
     .sort((a, b) => b.step - a.step)[0];
+  const isStuck = !isDone && !hasError && !runningStep && run.steps.length > 0;
   const currentStep = runningStep ?? lastDoneStep ?? run.steps[0];
   const labels = run.runKind === "refine" ? REFINE_STEP_LABELS : SEARCH_STEP_LABELS;
   const label = currentStep
@@ -61,6 +63,10 @@ export function AgentActivityMiniPill({
         "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium backdrop-blur-sm transition-colors duration-200 active:scale-95",
         isDone
           ? "bg-success/15 text-success ring-1 ring-success/40 hover:bg-success/25"
+          : hasError
+          ? "bg-rose-950/60 text-rose-300 ring-1 ring-rose-500/40 hover:bg-rose-900/80"
+          : isStuck
+          ? "bg-amber-950/60 text-amber-300 ring-1 ring-amber-500/40 hover:bg-amber-900/80"
           : "bg-neutral-800/70 text-neutral-200 ring-1 ring-white/10 hover:bg-neutral-800",
       )}
     >
@@ -75,6 +81,24 @@ export function AgentActivityMiniPill({
           >
             <Check className="h-3.5 w-3.5" strokeWidth={3} />
           </motion.span>
+        ) : hasError ? (
+          <motion.span
+            key="error"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="flex h-3.5 w-3.5 items-center justify-center text-rose-400"
+          >
+            <AlertCircle className="h-3.5 w-3.5" strokeWidth={2.5} />
+          </motion.span>
+        ) : isStuck ? (
+          <motion.span
+            key="stuck"
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="flex h-3.5 w-3.5 items-center justify-center text-amber-400"
+          >
+            <AlertCircle className="h-3.5 w-3.5" strokeWidth={2.5} />
+          </motion.span>
         ) : (
           <motion.span
             key={currentStep?.step ?? "pending"}
@@ -86,7 +110,13 @@ export function AgentActivityMiniPill({
         )}
       </AnimatePresence>
       <span className="max-w-45 truncate font-mono">
-        {isDone ? "Ready — view locations" : label}
+        {isDone
+          ? "Ready — view locations"
+          : hasError
+          ? "Paused — click to retry"
+          : isStuck
+          ? "Paused — click to resume"
+          : label}
       </span>
     </motion.button>
   );

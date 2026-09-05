@@ -48,6 +48,8 @@ import type {
   ConversationTurn,
   ScoutRun,
   Location,
+  SceneQuery,
+  AgentStep,
 } from "@/types";
 
 type Phase =
@@ -250,6 +252,25 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     setInFlightRunId((prev) => (prev === runId ? null : prev));
   }
 
+  function handlePillClick(run: ScoutRun) {
+    setActiveRunId(run.id);
+    setRightPanelRunId(run.id);
+
+    if (!run.packet) {
+      // In-flight, paused, stuck, or errored: always open focused agent activity view
+      setFocusedRunId(run.id);
+    } else {
+      // Completed run: if its cards are already open, toggle focused trace; otherwise open cards
+      if (rightPanelRunId === run.id && !focusedRunId) {
+        setFocusedRunId(run.id);
+      } else {
+        setFocusedRunId(null);
+        setInFlightRunId((prev) => (prev === run.id ? null : prev));
+      }
+    }
+  }
+
+  const [isRetryingRunId, setIsRetryingRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isFollowingUp, setIsFollowingUp] = useState(false);
@@ -526,6 +547,239 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
     [generateChatTitle],
   );
 
+  const handleRetryRun = useCallback(
+    async (targetRunId: string, options?: { forceFresh?: boolean }) => {
+      const run = runs.find((r) => r.id === targetRunId);
+      if (!run) return;
+
+      const forceFresh = Boolean(options?.forceFresh);
+
+      setIsRetryingRunId(targetRunId);
+      setError(null);
+      wasStoppedRef.current = false;
+      stoppedDuringRef.current = "research";
+
+      setActiveRunId(targetRunId);
+      setRightPanelRunId(targetRunId);
+      setFocusedRunId(targetRunId);
+      setInFlightRunId(targetRunId);
+      setPhase("running");
+
+      // Mark running in steps
+      setRuns((prev) =>
+        prev.map((r) => {
+          if (r.id !== targetRunId) return r;
+          if (forceFresh) {
+            return {
+              ...r,
+              status: "running",
+              error: null,
+              packet: null,
+              steps: [
+                {
+                  step: 1,
+                  action: "Analyzing scene requirements",
+                  detail: "Starting fresh research with strict real-world property criteria...",
+                  status: "running",
+                },
+              ],
+            };
+          }
+          const updatedSteps = r.steps.map((s) => {
+            if (s.status === "error" || s.status === "running") {
+              return { ...s, status: "running" as const };
+            }
+            return s;
+          });
+          return { ...r, status: "running", error: null, steps: updatedSteps };
+        }),
+      );
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const query: SceneQuery = {
+          description:
+            slots.description ||
+            run.triggerMessageContent ||
+            "Film scene location scouting",
+          mood: slots.mood || "",
+          era: slots.era || "",
+          budget: (slots.budget || "indie") as
+            | "micro"
+            | "indie"
+            | "mid"
+            | "studio",
+          region: slots.region || "",
+          requirements: slots.requirements
+            ? slots.requirements.split(",").map((req: string) => req.trim())
+            : [],
+          priorContext: run.triggerMessageContent,
+        };
+
+        const res = await fetch("/api/scout/retry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runId: run.serverRunId || run.id,
+            query,
+            forceFresh,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const errData = (await res.json().catch(() => ({ error: "Retry failed" }))) as { error?: string };
+          throw new Error(errData.error || `Retry failed (${res.status})`);
+        }
+
+        const data = (await res.json()) as {
+          runId?: string;
+          packet?: ScoutRun["packet"];
+          completedImmediately?: boolean;
+        };
+
+        const effectiveRunId = data.runId || targetRunId;
+
+        setRuns((prev) =>
+          prev.map((r) =>
+            r.id === targetRunId ? { ...r, serverRunId: effectiveRunId } : r,
+          ),
+        );
+
+        if (data.packet) {
+          setRuns((prev) =>
+            prev.map((r) => {
+              if (r.id !== targetRunId) return r;
+              const finishedSteps = r.steps.map((s) => ({
+                ...s,
+                status: "done" as const,
+              }));
+              return {
+                ...r,
+                steps: finishedSteps,
+                packet: data.packet ?? null,
+                status: "done",
+              };
+            }),
+          );
+          setPhase("done");
+          openRunCards(targetRunId);
+          return;
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          const poll = async () => {
+            if (controller.signal.aborted) {
+              resolve();
+              return;
+            }
+            try {
+              const statusRes = await fetch(`/api/scout/${effectiveRunId}`, {
+                signal: controller.signal,
+              });
+              if (!statusRes.ok) {
+                throw new Error(`Status check failed (${statusRes.status})`);
+              }
+              const pollData = (await statusRes.json()) as {
+                status: "running" | "done" | "error";
+                steps: typeof run.steps;
+                packet: ScoutRun["packet"];
+                error: string | null;
+              };
+
+              setRuns((prev) =>
+                prev.map((r) =>
+                  r.id === targetRunId
+                    ? {
+                        ...r,
+                        steps: pollData.steps || r.steps,
+                        error: pollData.error,
+                        status: pollData.status,
+                      }
+                    : r,
+                ),
+              );
+
+              if (pollData.status === "done") {
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                }
+                setRuns((prev) =>
+                  prev.map((r) => {
+                    if (r.id !== targetRunId) return r;
+                    const finishedSteps = (pollData.steps || r.steps).map((s) => ({
+                      ...s,
+                      status: s.status === "running" ? ("done" as const) : s.status,
+                    }));
+                    return {
+                      ...r,
+                      steps: finishedSteps,
+                      packet: pollData.packet,
+                      status: "done",
+                    };
+                  }),
+                );
+                setPhase("done");
+                openRunCards(targetRunId);
+                resolve();
+              } else if (pollData.status === "error") {
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                }
+                setError(pollData.error || "Scout pipeline failed");
+                setPhase("clarifying");
+                resolve();
+              }
+            } catch (err) {
+              if (pollTimerRef.current) {
+                clearInterval(pollTimerRef.current);
+                pollTimerRef.current = null;
+              }
+              reject(err);
+            }
+          };
+
+          poll();
+          pollTimerRef.current = setInterval(poll, 2000);
+        });
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setPhase("stopped");
+          return;
+        }
+        console.error("Retry failed:", err);
+        const msg = err instanceof Error ? err.message : "Retry failed";
+        setError(msg);
+        setRuns((prev) =>
+          prev.map((r) => {
+            if (r.id !== targetRunId) return r;
+            const erroredSteps = r.steps.map((s, idx, arr) => {
+              if (idx === arr.length - 1 || s.status === "running") {
+                return { ...s, status: "error" as const, detail: msg };
+              }
+              return s;
+            });
+            return { ...r, steps: erroredSteps, error: msg, status: "error" };
+          }),
+        );
+        setPhase("clarifying");
+      } finally {
+        setIsRetryingRunId(null);
+        abortControllerRef.current = null;
+        if (pollTimerRef.current) {
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      }
+    },
+    [runs, slots],
+  );
+
+
   const askForNextQuestion = useCallback(
     async (
       updatedHistory: ConversationTurn[],
@@ -748,6 +1002,18 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
         // disabled storage) — fall back to most-recent rather than idle.
         restoredRightPanelRunId = mostRecentCompletedRun?.id ?? null;
       }
+
+      const mostRecentUncompletedRun = [...(stored.runs ?? [])]
+        .reverse()
+        .find((r) => !r.packet);
+      if (mostRecentUncompletedRun) {
+        setInFlightRunId(mostRecentUncompletedRun.id);
+        setActiveRunId(mostRecentUncompletedRun.id);
+        if (!restoredRightPanelRunId) {
+          restoredRightPanelRunId = mostRecentUncompletedRun.id;
+        }
+      }
+
       setRightPanelRunId(restoredRightPanelRunId);
 
       if (stored.runs?.some((r) => r.packet)) {
@@ -1799,7 +2065,7 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
                             <ActivityPill
                               run={run}
                               isActive={isActive}
-                              onClick={() => openRunCards(run.id)}
+                              onClick={() => handlePillClick(run)}
                             />
 
                               {run.packet && (
@@ -2302,9 +2568,28 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             selectedRunId={rightPanelRunId}
             onOpenFocused={(runId) => setFocusedRunId(runId)}
             onCloseFocused={() => setFocusedRunId(null)}
-            onSelectRun={(runId) => openRunCards(runId)}
-            onOpenMiniPillCards={(runId) => openRunCards(runId)}
-            onDismissCards={() => setRightPanelRunId(null)}
+            onSelectRun={(runId) => {
+              const r = runs.find((item) => item.id === runId);
+              if (r && !r.packet) {
+                setActiveRunId(runId);
+                setRightPanelRunId(runId);
+                setFocusedRunId(runId);
+              } else {
+                openRunCards(runId);
+              }
+            }}
+            onOpenMiniPillCards={(runId) => {
+              const r = runs.find((item) => item.id === runId);
+              if (r && !r.packet) {
+                setFocusedRunId(runId);
+              } else {
+                openRunCards(runId);
+              }
+            }}
+            onDismissCards={() => {
+              setRightPanelRunId(null);
+              setFocusedRunId(null);
+            }}
             onAttachCard={(location) =>
               setAttachedCard({ scope: "single", locations: [location] })
             }
@@ -2320,6 +2605,8 @@ export function ScoutApp({ chatId }: { chatId?: string }) {
             onboardingPrefillName={effectiveDisplayName}
             onCompleteOnboarding={completeOnboarding}
             displayName={effectiveDisplayName}
+            onRetryRun={handleRetryRun}
+            isRetryingRunId={isRetryingRunId}
           />
         </div>
       </main>

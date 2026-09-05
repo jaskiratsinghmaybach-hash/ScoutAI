@@ -119,21 +119,29 @@ async function parallelSearch(query: string): Promise<string> {
     )
     .join("\n");
 }
-// Step 1: Generate search queries from scene description using Gemini
+// Step 1: Generate targeted search queries to discover specific, real-world named filming locations
 export async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
   const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
-  const prompt = `You are a film location research agent. Given a scene description, generate 4 targeted web search queries to find real filming locations.
+  const prompt = `You are an elite film location scout research agent. Given a scene brief, generate 4 HIGHLY TARGETED web search queries to discover REAL, SPECIFIC NAMED PROPERTIES, ARCHITECTURAL VILLAS, ESTATES, AND FILMING VENUES.
 
-Scene: ${query.description}
+SCENE BRIEF:
+Description: ${query.description}
 Mood: ${query.mood}
 Era/Period: ${query.era}
 Budget: ${query.budget}
 Region preference: ${query.region || "worldwide"}
-Special requirements: ${query.requirements?.join(", ") || "none"}${query.priorContext ? `\nPREVIOUS CONTEXT (this is a refinement of an earlier search):\n${query.priorContext}\n` : ""}
+Special requirements: ${query.requirements?.join(", ") || "none"}${query.priorContext ? `\nPREVIOUS CONTEXT:\n${query.priorContext}\n` : ""}
 
-Return exactly 4 search queries as a JSON array. Focus on: real locations, permit offices, past film productions, and cost data.
-Only return the JSON array, nothing else. Example: ["query1", "query2", "query3", "query4"]`;
+CRITICAL SEARCH STRATEGY:
+Your goal is to find ACTUAL, SPECIFIC NAMED PLACES (e.g. named villas, architectural houses, estates, or studios) that exist on Google Maps — NOT broad geographic regions or generic permit forms.
+Construct 4 distinct queries:
+1. Specific named architectural houses or villas in the region (e.g., modern villa architecture project in ${query.region || "the area"} on sites like ArchDaily, Dezeen, or Dwell).
+2. Location scouting agencies or production directories offering named villas or private properties for filming in ${query.region || "the area"} (e.g., location scouts, shoot locations, private estate film rentals).
+3. Real named historical or contemporary estates, manor houses, or waterfront villas in ${query.region || "the area"}.
+4. Real film productions, movies, or commercials shot in ${query.region || "the area"} matching this specific visual aesthetic, citing the exact filming location names.
+
+Return exactly 4 search queries as a JSON array of strings. Only return the JSON array, nothing else. Example: ["query1", "query2", "query3", "query4"]`;
 
   const text = await generateWithRetry(model, prompt);
 
@@ -142,10 +150,10 @@ Only return the JSON array, nothing else. Example: ["query1", "query2", "query3"
     return JSON.parse(cleaned);
   } catch {
     return [
-      `filming locations ${query.region} ${query.mood}`,
-      `film permit ${query.region} indie production`,
-      `${query.era} architecture locations filming`,
-      `movie locations ${query.description.slice(0, 50)}`,
+      `modern villa architecture ${query.region || ""} archdaily`,
+      `filming locations villa estate ${query.region || ""} shoot directory`,
+      `named private villas houses ${query.region || ""} film location`,
+      `filmed in ${query.region || ""} modern location`,
     ];
   }
 }
@@ -240,11 +248,21 @@ Requirements: ${query.requirements.join(", ") || "none"} ${query.priorContext ? 
 
 REAL SEARCH DATA:
 ${searchContext}
-CRITICAL: Only use URLs, facts, and figures that actually appear in the search data above. Never invent a plausible-looking URL, cost, or permit contact. If specific information wasn't found in the search results, say so honestly in that field (e.g. "No permit information found in search results") rather than fabricating a generic answer.
+
+MANDATORY RULES FOR REAL LOCATION NAMES & AUTHENTICITY:
+1. SPECIFIC REAL-WORLD PROPERTY NAMES ONLY:
+   - "name": MUST be the actual, proper, recognizable name of a REAL, SPECIFIC building, private villa, estate, architectural project, or venue (e.g., "Villa Överby", "Villa Pauli", "Artipelag", "Villa Solbacken", "House Husarö", "Greystone Mansion", "Ennis House").
+   - DO NOT INVENT DESCRIPTIVE PLACEHOLDERS: Absolutely NEVER generate generic descriptions disguised as names (e.g. "Modern Minimalist Villa on Forest Cliffs", "The Charred House", "Architect-Designed Waterfront Retreat", "Nordic Glass Residence") and NEVER append fake catalog codes (e.g. "(Stockholm Area V17)"). A real location scout only presents identifiable, contactable locations to a director.
+   - DO NOT USE AN ENTIRE ISLAND, NEIGHBORHOOD, OR DISTRICT AS THE LOCATION NAME: If the search results mention an island or district (e.g. "Stora Essingen", "Lidingö", "Djursholm", "Södermalm"), DO NOT use that island or suburb name as the villa's name! You must specify the actual villa, estate, or architectural project name located there (e.g. "Villa Pauli, Djursholm" or "Villa Astrea").
+   - If a modern residential property is known by its architectural project title or architect in search results (e.g. "House Husarö by Tham & Videgård", "Villa Circuitus"), use that exact published project name so production teams can find its real blueprints and permit contacts.
+
+2. FACTUAL ACCURACY & DATA INTEGRITY:
+   - Only use URLs, facts, and figures that actually appear in the search data above. Never invent a plausible-looking URL, cost, or permit contact. If specific information wasn't found in the search results, say so honestly in that field (e.g. "No permit information found in search results") rather than fabricating a generic answer.
+
 Return a JSON array of exactly 4 location objects. Each must include:
 {
   "id": "unique-slug",
-  "name": "Location Name",
+  "name": "Actual Real Property or Project Name",
   "city": "City",
   "country": "Country",
   "score": "An integer 0-100. Use the FULL range honestly — a location that's merely acceptable should score 40-60, a strong match 65-80, and only an exceptional, near-perfect match for ALL stated requirements (mood, era, budget, region, special requirements) should score above 85. Do not default to high scores out of politeness. If a location is missing key information from search results, that uncertainty should also lower its score.",
@@ -259,7 +277,7 @@ Return a JSON array of exactly 4 location objects. Each must include:
   "weather_notes": "Best season, weather considerations",
   "logistics_notes": "Crew access, nearby facilities",
   "search_sources": ["source url 1", "source url 2"],
-  "image_query": "Specific search query to find a representative photo",
+  "image_query": "Specific search query to find a representative photo of this exact named property",
   "scene_description": "2-3 sentences describing the physical environment and setting itself — what it actually looks and feels like on the ground (architecture, lighting, textures, surroundings, ambient sound/activity). This is about the PLACE, not why it fits the brief (that's mood_match/era_match) and not shooting logistics (that's logistics_notes) — describe it the way a scout would describe the location to a director who has never seen it."
 }
 Before assigning scores, explicitly compare each location against every stated requirement (mood, era, budget fit, region, special requirements) and penalize mismatches or unknowns. Scores should genuinely differ across the 4 locations based on real fit differences — avoid clustering all scores in the 80s-90s range. The same applies to mood_fit_percent and era_fit_percent: rate each honestly and independently per location instead of copying the overall score or defaulting every location to the same number.
@@ -291,7 +309,8 @@ Base your response on the actual search data. Only return the JSON array.`;
 // location (Promise.all), so latency is roughly one search's worth,
 // not one per location sequentially.
 async function verifyLocationExists(location: Location): Promise<string> {
-  const query = `"${location.name}" ${location.city} ${location.country} address location`;
+  const cleanName = location.name.replace(/\(.*?\)/g, "").trim();
+  const query = `"${cleanName}" ${location.city} ${location.country} architecture address`;
   return parallelSearch(query);
 }
 
@@ -311,15 +330,16 @@ export async function filterToRealLocations(locations: Location[]): Promise<Loca
     )
     .join("\n\n---\n\n");
 
-  const prompt = `You are verifying whether film location candidates are REAL, findable places — not judging whether they're good filming locations, only whether they genuinely exist.
+  const prompt = `You are a strict film location verification supervisor. Verify whether each film location candidate is an ACTUAL, SPECIFIC, FINDABLE PHYSICAL PROPERTY OR VENUE — and NOT a generic descriptive placeholder or an entire geographical district.
 
-For each location below, its own targeted verification search results are provided. Decide if those results actually confirm this is a real, specific, findable place (e.g. a named business, an address, a review/listing site entry, a news mention of this specific place) — versus generic/irrelevant results, or results about a different, unrelated place, which means this location could not be confirmed as real.
-
-Be strict: a location described only in vague, composite terms ("Suburban Home with Bright Kitchen") with no verification results actually naming or confirming that specific property is NOT verified, even if the results contain other real-sounding content nearby.
+CRITICAL VERIFICATION RULES:
+1. REJECT (false) any location whose name is a generic descriptive phrase or AI-generated label (e.g. "Modern Minimalist Villa on Forest Cliffs", "The Charred House", "Architect-Designed Waterfront Retreat", "Nordic Glass Residence") or has fake identifiers (e.g. "(Stockholm Area V17)").
+2. REJECT (false) any candidate whose name is merely an entire island, town, neighborhood, or district (e.g. "Stora Essingen", "Stockholm Archipelago", "Södermalm") when the brief requested a specific villa or venue. A film crew cannot shoot "on an island" without knowing the specific property!
+3. ACCEPT (true) ONLY IF the verification search results confirm that an actual, specific, real-world named property, estate, villa, architectural project, or venue genuinely exists at this location and can be located by a film production team.
 
 ${context}
 
-Return a JSON array of ${locations.length} booleans, in the same order as the locations above (index 0 first) — true if verified real, false if not confirmed. Only return the JSON array, nothing else. Example: [true, false, true, true]`;
+Return a JSON array of ${locations.length} booleans, in the same order as the locations above (index 0 first) — true if verified real, specific, and findable, false if generic, composite, or district-only. Only return the JSON array, nothing else. Example: [true, false, true, true]`;
 
   try {
     const text = await generateWithRetry(model, prompt);
