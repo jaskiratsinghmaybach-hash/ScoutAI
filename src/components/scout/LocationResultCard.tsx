@@ -116,8 +116,11 @@ export function LocationResultCard({
             </span>
           </div>
           <div
-            className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(${sortedLocations.length}, minmax(0, 1fr))` }}
+            className={cn(
+              "grid grid-cols-2 gap-2",
+              sortedLocations.length === 3 && "md:grid-cols-3",
+              sortedLocations.length === 4 && "md:grid-cols-4",
+            )}
           >
             {sortedLocations.map((loc, i) => {
               const isActive = loc.id === location.id;
@@ -189,7 +192,7 @@ export function LocationResultCard({
         </motion.div>
       </AnimatePresence>
 
-      <div className="flex min-h-0 flex-1 gap-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:flex-row md:overflow-visible">
         {/* Main pane: tabs + content */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <div
@@ -219,7 +222,7 @@ export function LocationResultCard({
             })}
           </div>
 
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4">
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4 md:min-h-[16rem]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${location.id}-${activeTab}`}
@@ -235,8 +238,11 @@ export function LocationResultCard({
           </div>
         </div>
 
-        {/* Right-side stats column */}
-        <div className="scrollbar-thin w-40 shrink-0 overflow-y-auto sm:w-44 lg:w-48">
+        {/* Right-side stats column on desktop; stacks below the tabs
+            on mobile instead of squeezing into a narrow side rail
+            (that's what was crowding/overlapping the Scout's Score,
+            Mood Fit, etc. pills against the tab content on phones). */}
+        <div className="scrollbar-thin w-full shrink-0 overflow-visible md:w-40 md:overflow-y-auto lg:w-48">
           <LocationStats location={location} />
         </div>
       </div>
