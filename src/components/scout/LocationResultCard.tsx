@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, X, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationStats } from "./LocationStats";
 import { SceneTab } from "./tabs/SceneTab";
@@ -102,9 +102,75 @@ export function LocationResultCard({
       initial={{ opacity: 0, scale: 0.96, y: 12 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="flex h-full min-h-0 w-full min-w-0 flex-col gap-5 overflow-hidden"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden"
     >
-      {/* Top area: location name + country */}
+      {/* Location navigator — always visible at the top so users
+          instantly see there are multiple locations to explore.
+          Only renders when there's more than one location. */}
+      {sortedLocations.length > 1 && (
+        <div className="shrink-0">
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <MapPin className="h-3 w-3 text-foreground-muted" />
+            <span className="text-[10px] font-medium uppercase tracking-widest text-foreground-muted">
+              {sortedLocations.length} locations found
+            </span>
+          </div>
+          <div
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${sortedLocations.length}, minmax(0, 1fr))` }}
+          >
+            {sortedLocations.map((loc, i) => {
+              const isActive = loc.id === location.id;
+              return (
+                <button
+                  key={loc.id}
+                  type="button"
+                  onClick={() => setSelectedId(loc.id)}
+                  title={loc.name}
+                  className={cn(
+                    "group relative min-w-0 overflow-hidden rounded-lg border px-3 py-2 text-left text-xs font-medium transition-all duration-200",
+                    isActive
+                      ? "border-white/20 bg-neutral-800 text-white shadow-sm"
+                      : "border-border bg-surface text-foreground-muted hover:border-neutral-600 hover:bg-neutral-800/50 hover:text-foreground",
+                  )}
+                >
+                  {/* Active indicator bar */}
+                  {isActive && (
+                    <motion.div
+                      layoutId="location-active-bar"
+                      className="absolute inset-x-0 top-0 h-0.5 rounded-full bg-white/60"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <div className="flex items-start gap-1.5">
+                    <span
+                      className={cn(
+                        "mt-px shrink-0 rounded px-1 py-0.5 text-[9px] font-bold leading-none tabular-nums",
+                        isActive
+                          ? "bg-white/15 text-white"
+                          : "bg-neutral-800 text-neutral-500 group-hover:bg-neutral-700/60 group-hover:text-neutral-400",
+                      )}
+                    >
+                      #{i + 1}
+                    </span>
+                    <span className="min-w-0 truncate leading-tight">{loc.name}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      "mt-1 truncate text-[10px] tabular-nums",
+                      isActive ? "text-neutral-400" : "text-neutral-600 group-hover:text-neutral-500",
+                    )}
+                  >
+                    Score {loc.score}/100
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Active location name + country */}
       <AnimatePresence mode="wait">
         <motion.div
           key={location.id}
@@ -112,6 +178,7 @@ export function LocationResultCard({
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -8 }}
           transition={{ duration: 0.2 }}
+          className="shrink-0"
         >
           <h2 className="text-xl font-semibold text-foreground">
             {location.name}
@@ -188,35 +255,6 @@ export function LocationResultCard({
           </button>
         </div>
       )}
-
-      {/* Location pill navigator — sized to however many locations
-          actually survived verification (1-4), never assumed to be 4 */}
-      <div
-        className="grid shrink-0 gap-2"
-        style={{ gridTemplateColumns: `repeat(${sortedLocations.length}, minmax(0, 1fr))` }}
-      >
-        {sortedLocations.map((loc, i) => {
-          const isActive = loc.id === location.id;
-          return (
-            <button
-              key={loc.id}
-              type="button"
-              onClick={() => setSelectedId(loc.id)}
-              className={cn(
-                "min-w-0 rounded-lg border px-3 py-2 text-left text-xs font-medium transition-all duration-200",
-                isActive
-                  ? "border-white/40 bg-neutral-800 text-white"
-                  : "border-border bg-surface text-foreground-muted hover:text-foreground",
-              )}
-            >
-              <div className="truncate">{loc.name}</div>
-              <div className="mt-0.5 truncate text-[10px] text-foreground-muted">
-                #{i + 1} · {loc.score}/100
-              </div>
-            </button>
-          );
-        })}
-      </div>
     </motion.div>
   );
 }
