@@ -106,7 +106,23 @@ function buildGenAIClient() {
   });
 }
 
-export const genAI = buildGenAIClient();
+// NOTE: this is intentionally NOT constructed eagerly at module load
+// (i.e. not `export const genAI = buildGenAIClient()`). Next.js
+// evaluates every API route module during `next build` to collect
+// page/route metadata, and on Vercel's build machine neither local
+// ADC nor the runtime WIF env vars are available yet — those only
+// exist once the deployed function actually receives a request. An
+// eager top-level call here fails the build with "Authentication is
+// not set up" even though the code is correct and works fine at
+// runtime. Lazily constructing on first real use, and caching the
+// result, sidesteps this without changing behavior at request time.
+let _genAI: GoogleGenAI | undefined;
+function getGenAI(): GoogleGenAI {
+  if (!_genAI) {
+    _genAI = buildGenAIClient();
+  }
+  return _genAI;
+}
 
 const MODEL = "gemini-3.6-flash";
 
@@ -145,7 +161,7 @@ async function callGemini(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await genAI.models.generateContent({
+    const response = await getGenAI().models.generateContent({
       model: MODEL,
       contents: prompt,
       config: {
