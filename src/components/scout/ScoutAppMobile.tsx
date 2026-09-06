@@ -493,6 +493,7 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
             displayName={effectiveDisplayName}
             onRetryRun={handleRetryRun}
             isRetryingRunId={isRetryingRunId}
+            isMobile
           />
         </div>
       ) : (

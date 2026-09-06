@@ -64,6 +64,7 @@ export function ResultsPanel({
   displayName,
   onRetryRun,
   isRetryingRunId,
+  isMobile = false,
 }: {
   runs: ScoutRun[];
   inFlightRun: ScoutRun | null;
@@ -86,6 +87,14 @@ export function ResultsPanel({
   displayName?: string | null;
   onRetryRun?: (runId: string, options?: { forceFresh?: boolean }) => void;
   isRetryingRunId?: string | null;
+  // Mobile-only layout tweaks: hides the "Suggestions" dropdown (no
+  // room for it next to Add to chat on a narrow header) and lets the
+  // top controls row wrap instead of forcing everything onto one line
+  // — that forced single line was pushing the header wider than the
+  // viewport and causing the whole page to horizontal-scroll.
+  // Defaults to false so ScoutAppDesktop's existing call site (no
+  // prop passed) renders exactly as before.
+  isMobile?: boolean;
 }) {
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
   const focusedRun = runs.find((r) => r.id === focusedRunId) ?? null;
@@ -111,7 +120,12 @@ export function ResultsPanel({
   return (
     <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col">
       {/* Top controls */}
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div
+        className={cn(
+          "mb-4 flex items-center justify-between gap-3",
+          isMobile && "flex-wrap gap-y-2",
+        )}
+      >
         <div className="flex items-center gap-2">
           <RunHistoryDropdown
             runs={runs}
@@ -135,19 +149,24 @@ export function ResultsPanel({
 
         {selectedRun?.packet && selectedLocation && (
           <div className="flex shrink-0 items-center gap-3">
-            {/* Suggestions sits to the LEFT of "Add to chat", same row —
-                previously stacked underneath it in a flex-col wrapper. */}
+            {/* Suggestions sits to the LEFT of "Add to chat" on
+                desktop, same row. On mobile there's no room for a
+                third dropdown next to Add to chat + dismiss, so it's
+                hidden entirely there — the same suggestions are still
+                reachable from inside the tab content on mobile. */}
             <div className="flex items-center gap-3">
-              <CardSuggestions
-                key={selectedLocation.id}
-                location={selectedLocation}
-                onPick={(text) => onAttachSuggestion(selectedLocation, text)}
-              />
+              {!isMobile && (
+                <CardSuggestions
+                  key={selectedLocation.id}
+                  location={selectedLocation}
+                  onPick={(text) => onAttachSuggestion(selectedLocation, text)}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => onAttachCard(selectedLocation)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full bg-neutral-800/60 px-3 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-sm transition-colors hover:bg-neutral-800 hover:text-white",
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-full bg-neutral-800/60 px-3 py-1.5 text-xs font-medium text-neutral-300 backdrop-blur-sm transition-colors hover:bg-neutral-800 hover:text-white",
                 )}
               >
                 <MessageSquarePlus className="h-3.5 w-3.5" />
@@ -158,7 +177,7 @@ export function ResultsPanel({
             <button
               type="button"
               onClick={onDismissCards}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-foreground-muted transition-colors hover:bg-neutral-800 hover:text-foreground"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-muted transition-colors hover:bg-neutral-800 hover:text-foreground"
               aria-label="Dismiss"
             >
               <X className="h-4 w-4" />
@@ -170,7 +189,7 @@ export function ResultsPanel({
           <button
             type="button"
             onClick={onDismissCards}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-foreground-muted transition-colors hover:bg-neutral-800 hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-foreground-muted transition-colors hover:bg-neutral-800 hover:text-foreground"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" />

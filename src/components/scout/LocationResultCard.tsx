@@ -222,7 +222,7 @@ export function LocationResultCard({
             })}
           </div>
 
-          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4 md:min-h-[16rem]">
+          <div className="scrollbar-thin min-h-[60vh] flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4 md:min-h-[16rem]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${location.id}-${activeTab}`}
