@@ -107,6 +107,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
     handleRetryRun,
     handleInitialSubmit,
     handleEditMessage,
+    handleRetryMessage,
     handleSwitchBranch,
     handleIntroSubmit,
     handleShareCurrentChat,
@@ -694,6 +695,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                               onEdit={(newContent) =>
                                 handleEditMessage(i, newContent)
                               }
+                              onRetry={() => handleRetryMessage(i, node.content)}
                               pager={
                                 hasSiblings && siblingInfo
                                   ? {

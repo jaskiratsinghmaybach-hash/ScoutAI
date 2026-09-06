@@ -9,6 +9,7 @@ import {
     Copy,
     Check,
     Pencil,
+    RotateCcw,
 } from "lucide-react";
 import { CardReferenceChip } from "./CardReferenceChip";
 import type { Location } from "@/types";
@@ -30,6 +31,11 @@ interface UserMessageProps {
      */
     onEdit?: (newContent: string) => void;
     /**
+     * Called when the user clicks retry. Sends the message again for a response,
+     * branching if a downstream response already exists.
+     */
+    onRetry?: () => void;
+    /**
      * Present only when this message has sibling versions (i.e. it was
      * edited at least once). Renders a "< N/M >" pager to switch
      * between them. Absent entirely for messages with no siblings, so
@@ -45,11 +51,12 @@ interface UserMessageProps {
     attachedCard?: { scope: "single" | "all"; locations: Location[] };
 }
 
-export function UserMessage({ content, onEdit, pager, attachedCard }: UserMessageProps) {
+export function UserMessage({ content, onEdit, onRetry, pager, attachedCard }: UserMessageProps) {
     const [expanded, setExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [draft, setDraft] = useState(content);
     const [copied, setCopied] = useState(false);
+    const [isRetrying, setIsRetrying] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const lines = content.split("\n");
@@ -91,6 +98,13 @@ export function UserMessage({ content, onEdit, pager, attachedCard }: UserMessag
         }
         onEdit?.(trimmed);
         setIsEditing(false);
+    }
+
+    function handleRetryClick() {
+        if (!onRetry || isRetrying) return;
+        setIsRetrying(true);
+        onRetry();
+        setTimeout(() => setIsRetrying(false), 1000);
     }
 
     if (isEditing) {
@@ -198,9 +212,21 @@ export function UserMessage({ content, onEdit, pager, attachedCard }: UserMessag
                         <button
                             onClick={startEdit}
                             aria-label="Edit message"
+                            title="Edit message"
                             className="flex h-6 w-6 items-center justify-center rounded-full text-foreground-muted hover:bg-neutral-800/60 hover:text-foreground"
                         >
                             <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                    {onRetry && (
+                        <button
+                            onClick={handleRetryClick}
+                            disabled={isRetrying}
+                            aria-label="Retry message"
+                            title="Retry response"
+                            className="flex h-6 w-6 items-center justify-center rounded-full text-foreground-muted hover:bg-neutral-800/60 hover:text-foreground disabled:opacity-50"
+                        >
+                            <RotateCcw className={`h-3.5 w-3.5 ${isRetrying ? "animate-spin text-white" : ""}`} />
                         </button>
                     )}
                 </div>

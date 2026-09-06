@@ -102,6 +102,7 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
     handleRetryRun,
     handleInitialSubmit,
     handleEditMessage,
+    handleRetryMessage,
     handleSwitchBranch,
     handleAnswer,
     handleSkipAll,
@@ -558,6 +559,7 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
                         content={node.content}
                         attachedCard={node.attachedCard}
                         onEdit={(newContent) => handleEditMessage(i, newContent)}
+                        onRetry={() => handleRetryMessage(i, node.content)}
                         pager={
                           hasSiblings && siblingInfo
                             ? {

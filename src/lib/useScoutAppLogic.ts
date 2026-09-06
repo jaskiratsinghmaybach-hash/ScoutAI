@@ -1176,6 +1176,66 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
   }
 
   /**
+   * Retries a user message at the given history index.
+   *
+   * - If a downstream response already exists (the message already got
+   *   an answer), we create a NEW sibling branch with the same content,
+   *   exactly like handleEditMessage, so the old response is preserved
+   *   in the pager (< N/M >) and can be revisited. This is the
+   *   "intentional retry when a response exists" path.
+   *
+   * - If the message is a dead-end (no response came through, e.g. the
+   *   user sent a message but something went wrong), we just re-trigger
+   *   askForNextQuestion on the same history without branching — there
+   *   is nothing to preserve.
+   */
+  function handleRetryMessage(index: number, content: string) {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+
+    const hasResponseAfter = history.length > index + 1;
+
+    if (hasResponseAfter) {
+      // There's already a downstream response — branch like an edit, same content.
+      setTree((prevTree) => {
+        const activePath = getActivePath(prevTree);
+        const retryNode = activePath[index];
+        if (!retryNode) return prevTree;
+        const parentId = retryNode.parentId ?? prevTree.rootId;
+        const result = addMessage(prevTree, parentId, "user", content);
+        return {
+          ...result.tree,
+          activeChildByParent: {
+            ...result.tree.activeChildByParent,
+            [parentId]: result.nodeId,
+          },
+        };
+      });
+
+      setCurrentQuestion(null);
+      setError(null);
+      setRuns((prev) => prev.filter((r) => r.triggerMessageIndex < index));
+
+      const updatedHistory: ConversationTurn[] = [
+        ...history.slice(0, index),
+        { role: "user", content },
+      ];
+      askForNextQuestion(updatedHistory, EMPTY_SLOTS);
+    } else {
+      // Dead-end — no existing response to preserve, just re-trigger.
+      setCurrentQuestion(null);
+      setError(null);
+      const updatedHistory = history.slice(0, index + 1);
+      askForNextQuestion(updatedHistory, EMPTY_SLOTS);
+    }
+  }
+
+  /**
    * Switches which sibling is active under a given parent — used by the
    * pager (< N/M >) on an edited message. This ONLY moves the pointer;
    * it never auto-triggers a new API call. If the target branch already
@@ -1566,6 +1626,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
     askForNextQuestion,
     handleInitialSubmit,
     handleEditMessage,
+    handleRetryMessage,
     handleSwitchBranch,
     handleIntroSubmit,
     handleShareCurrentChat,

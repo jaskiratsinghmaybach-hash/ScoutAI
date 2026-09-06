@@ -100,10 +100,10 @@ export function ContinuityModal({
 
     // Sync local profile name state when profile updates
     useEffect(() => {
-        if (profile?.display_name !== undefined) {
+        if (profile?.display_name !== undefined && nameInput !== profile.display_name) {
             setNameInput(profile.display_name ?? "");
         }
-    }, [profile?.display_name]);
+    }, [profile?.display_name, nameInput]);
 
     // Close on Escape
     useEffect(() => {
