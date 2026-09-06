@@ -69,20 +69,21 @@ function buildGenAIClient() {
   // Production path — Vercel OIDC token exchanged for short-lived GCP
   // credentials via the scoutai-vertex service account.
   //
-  // IMPORTANT: the GCP WIF provider here was configured with "Allowed
-  // audiences" set to a custom value (https://vercel.com/<team-slug>),
-  // NOT "Default audience". That means getVercelOidcToken() MUST be
-  // called with that exact same audience string, or the token Vercel
-  // mints will carry the SDK's default aud claim (the provider
-  // resource name) instead — which GCP's STS endpoint then rejects
-  // with "audience ... does not match the expected audience", since
-  // it doesn't match what's configured in the console. This is
-  // separate from the `audience` field on ExternalAccountClient below
-  // (which tells GCP which provider to route the exchange to) — that
-  // one was always correct; this is what was actually missing.
-  const VERCEL_OIDC_AUDIENCE = trim(process.env.GCP_AUDIENCE) ||
-    "https://vercel.com/jaskirat-singhs-projects-af4a7c9c";
-
+  // The GCP WIF provider here uses "Allowed audiences" set to
+  // https://vercel.com/<team-slug> — which is exactly Vercel's
+  // DEFAULT token audience (see Vercel's OIDC docs: "By default, the
+  // OIDC token's aud claim is set to https://vercel.com/[TEAM_SLUG]").
+  // So getVercelOidcToken() is called with NO arguments here — do not
+  // pass an explicit `audience` option. Passing one (even the same
+  // https://vercel.com/... value) makes @vercel/oidc call Vercel's
+  // separate token-EXCHANGE service, which is for minting a token for
+  // a genuinely different third-party audience (Azure, AWS, your own
+  // API's URL) and rejects Vercel's own default-format URL as an
+  // invalid exchange target ("Failed to exchange token: Invalid
+  // audience"). The GCP-side `audience` field below (the provider
+  // resource name) is a separate, unrelated value — it tells GCP's
+  // STS which provider to route the exchange to, and was always
+  // correct.
   const authClient = ExternalAccountClient.fromJSON({
     type: "external_account",
     audience: `//iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${GCP_WORKLOAD_IDENTITY_POOL_ID}/providers/${GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID}`,
@@ -90,8 +91,7 @@ function buildGenAIClient() {
     token_url: "https://sts.googleapis.com/v1/token",
     service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT_EMAIL}:generateAccessToken`,
     subject_token_supplier: {
-      getSubjectToken: () =>
-        getVercelOidcToken({ audience: VERCEL_OIDC_AUDIENCE }),
+      getSubjectToken: getVercelOidcToken,
     },
   });
 
