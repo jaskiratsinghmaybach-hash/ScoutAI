@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { genAI, generateWithRetry } from "@/lib/agent";
+import { Type } from "@google/genai";
+import { generateWithRetry } from "@/lib/agent";
 import type { Location } from "@/types";
 
 export const runtime = "nodejs";
@@ -41,8 +42,9 @@ Logistics notes: ${location.logistics_notes}
 Respond with ONLY a JSON array of exactly 3 short question strings, nothing else. Example: ["What's the actual daily cost breakdown?", "Does this fit a moody night scene?", "Any permit restrictions for weekends?"]`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-    const text = await generateWithRetry(model, prompt);
+    const text = await generateWithRetry(prompt, 2, {
+      responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } },
+    });
     const cleaned = text.replace(/```json|```/g, "").trim();
     const suggestions = JSON.parse(cleaned) as unknown;
 

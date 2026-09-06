@@ -1,6 +1,114 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, ThinkingLevel, Type, type Schema } from "@google/genai";
+import { ExternalAccountClient } from "google-auth-library";
+import { getVercelOidcToken } from "@vercel/oidc";
 import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
+// Vertex AI client (replaces the old AI Studio GoogleGenerativeAI
+// client).
+//
+// LOCAL DEV: auth is handled transparently by Application Default
+// Credentials (gcloud auth application-default login) — no key
+// needed, no code branch required, ADC just works.
+//
+// PRODUCTION (Vercel): ADC does NOT work in a deployed serverless
+// function — there's no local gcloud session to read. Instead we use
+// Workload Identity Federation: Vercel issues a short-lived OIDC
+// token (via @vercel/oidc), which GCP's STS exchanges for temporary
+// credentials scoped to impersonate a dedicated service account — no
+// downloadable key file ever exists. This is intentionally NOT
+// GOOGLE_APPLICATION_CREDENTIALS/a key file, which is what the old
+// comment here used to say — that approach is what WIF was set up to
+// avoid.
+//
+// Which path runs is decided by whether the GCP_* WIF env vars are
+// present: they're only set in Vercel's Production environment, so
+// local dev automatically stays on the ADC path with zero config.
+//
+// location "global" — not a regional endpoint like "us-central1" —
+// because gemini-3.6-flash (and 3.7-flash) are served through
+// Vertex AI's global endpoint. Only gemini-3.5-flash/-flash-lite
+// currently also support the regional "us"/"eu" multi-regions.
+function buildGenAIClient() {
+  const {
+    GOOGLE_CLOUD_PROJECT,
+    GOOGLE_CLOUD_LOCATION,
+    GCP_PROJECT_ID,
+    GCP_PROJECT_NUMBER,
+    GCP_SERVICE_ACCOUNT_EMAIL,
+    GCP_WORKLOAD_IDENTITY_POOL_ID,
+    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
+  } = process.env;
+
+  const usingWIF =
+    GCP_PROJECT_NUMBER &&
+    GCP_SERVICE_ACCOUNT_EMAIL &&
+    GCP_WORKLOAD_IDENTITY_POOL_ID &&
+    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID;
+
+  if (!usingWIF) {
+    // Local dev path — unchanged behavior from before.
+    return new GoogleGenAI({
+      vertexai: true,
+      project: GOOGLE_CLOUD_PROJECT,
+      location: GOOGLE_CLOUD_LOCATION || "global",
+    });
+  }
+
+  // Production path — Vercel OIDC token exchanged for short-lived GCP
+  // credentials via the scoutai-vertex service account. The GCP WIF
+  // provider here was configured with "Allowed audiences" (not
+  // "Default audience"), so getVercelOidcToken() does NOT need an
+  // audience override — it uses Vercel's default aud claim, and the
+  // ExternalAccountClient's own `audience` field below (the GCP
+  // resource name) is what the STS token exchange actually checks.
+  const authClient = ExternalAccountClient.fromJSON({
+    type: "external_account",
+    audience: `//iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${GCP_WORKLOAD_IDENTITY_POOL_ID}/providers/${GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID}`,
+    subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+    token_url: "https://sts.googleapis.com/v1/token",
+    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT_EMAIL}:generateAccessToken`,
+    subject_token_supplier: {
+      getSubjectToken: getVercelOidcToken,
+    },
+  });
+
+  if (!authClient) {
+    // fromJSON only returns null if the config object itself is
+    // malformed — since we build it from a fixed literal above, this
+    // should be unreachable, but fail loudly rather than fall through
+    // to an untyped/undefined auth client if it ever happens.
+    throw new Error(
+      "Failed to construct ExternalAccountClient for WIF — check GCP_* env vars are set correctly in Vercel."
+    );
+  }
+
+  return new GoogleGenAI({
+    vertexai: true,
+    project: GCP_PROJECT_ID || GOOGLE_CLOUD_PROJECT,
+    location: GOOGLE_CLOUD_LOCATION || "global",
+    googleAuthOptions: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      authClient: authClient as any,
+      // ^ @google/genai bundles its own private copy of
+      // google-auth-library (node_modules/@google/genai/node_modules/
+      // google-auth-library), separate from the top-level one we
+      // installed and imported ExternalAccountClient from above.
+      // TypeScript treats their types as nominally distinct even
+      // though they're structurally identical — a real, working
+      // ExternalAccountClient instance at runtime, just from "the
+      // wrong" package's perspective at the type level. This is a
+      // known class of issue with nested/duplicated npm dependencies,
+      // not a logic bug — an `any` cast at this single boundary is
+      // the standard way to unblock it without disabling type
+      // checking anywhere else in the file.
+      projectId: GCP_PROJECT_ID || GOOGLE_CLOUD_PROJECT,
+    },
+  });
+}
+
+export const genAI = buildGenAIClient();
+
+const MODEL = "gemini-3.6-flash";
 
 // How long a single Gemini call is allowed to run before it's treated
 // as a failure worth retrying/giving up on, rather than left to hang
@@ -12,10 +120,56 @@ import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 // stage budget.
 const GEMINI_CALL_TIMEOUT_MS = 35000;
 
-export async function generateWithRetry(
-  model: ReturnType<typeof genAI.getGenerativeModel>,
+// Shared generation config for every plain-text-returning call in this
+// file: explicit low thinking level to cut reasoning overhead for
+// these classification/extraction/synthesis tasks (root cause of the
+// ~17.5s baseline latency on the old SDK, which had no generationConfig
+// at all). Callers that need structured JSON output pass an additional
+// responseSchema option to generateWithRetry on top of this.
+const BASE_GENERATION_CONFIG = {
+  thinkingConfig: {
+    thinkingLevel: ThinkingLevel.LOW,
+  },
+};
+
+type GenerateOptions = {
+  timeoutMs?: number;
+  responseSchema?: Schema;
+};
+
+async function callGemini(
   prompt: string,
-  retries = 2
+  timeoutMs: number,
+  responseSchema?: Schema
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await genAI.models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: {
+        ...BASE_GENERATION_CONFIG,
+        ...(responseSchema
+          ? { responseMimeType: "application/json", responseSchema }
+          : {}),
+        abortSignal: controller.signal,
+      },
+    });
+    const text = response.text;
+    if (typeof text !== "string") {
+      throw new Error("Gemini response contained no text");
+    }
+    return text.trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function generateWithRetry(
+  prompt: string,
+  retries = 2,
+  options: GenerateOptions = {}
 ): Promise<string> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
@@ -23,11 +177,9 @@ export async function generateWithRetry(
       // uses a shorter one, so total worst-case time (35s + 1s backoff
       // + 20s ≈ 56s) stays inside the 60s stage budget instead of
       // risking two full 35s attempts back to back.
-      const attemptTimeout = attempt === 0 ? GEMINI_CALL_TIMEOUT_MS : 20000;
-      const result = await model.generateContent(prompt, {
-        timeout: attemptTimeout,
-      });
-      return result.response.text().trim();
+      const attemptTimeout =
+        attempt === 0 ? options.timeoutMs ?? GEMINI_CALL_TIMEOUT_MS : 20000;
+      return await callGemini(prompt, attemptTimeout, options.responseSchema);
     } catch (err) {
       const isLastAttempt = attempt === retries - 1;
       const message = err instanceof Error ? err.message : String(err);
@@ -51,10 +203,6 @@ export async function generateWithRetry(
   }
   throw new Error("Failed after retries");
 }
-
-
-// Initialize Gemini
-export const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 // How long a single Parallel search is allowed to run before this
 // pipeline gives up on it and moves on with whatever it has. Without
@@ -121,8 +269,6 @@ async function parallelSearch(query: string): Promise<string> {
 }
 // Step 1: Generate targeted search queries to discover specific, real-world named filming locations
 export async function generateSearchQueries(query: SceneQuery): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-
   const prompt = `You are an elite film location scout research agent. Given a scene brief, generate 4 HIGHLY TARGETED web search queries to discover REAL, SPECIFIC NAMED PROPERTIES, ARCHITECTURAL VILLAS, ESTATES, AND FILMING VENUES.
 
 SCENE BRIEF:
@@ -143,7 +289,12 @@ Construct 4 distinct queries:
 
 Return exactly 4 search queries as a JSON array of strings. Only return the JSON array, nothing else. Example: ["query1", "query2", "query3", "query4"]`;
 
-  const text = await generateWithRetry(model, prompt);
+  const text = await generateWithRetry(prompt, 2, {
+    responseSchema: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  });
 
   try {
     const cleaned = text.replace(/```json|```/g, "").trim();
@@ -226,12 +377,59 @@ function normalizeLocations(raw: unknown): Location[] {
 }
 
 // Step 3: Gemini synthesizes research into structured location packets
+// Response schema mirroring the Location shape (minus id, which is
+// backfilled by normalizeLocations) — gives the model native JSON mode
+// with a concrete shape instead of relying purely on prompt instructions.
+const LOCATION_SCHEMA: Schema = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      id: { type: Type.STRING },
+      name: { type: Type.STRING },
+      city: { type: Type.STRING },
+      country: { type: Type.STRING },
+      score: { type: Type.NUMBER },
+      mood_match: { type: Type.STRING },
+      mood_fit_percent: { type: Type.NUMBER },
+      era_match: { type: Type.STRING },
+      era_fit_percent: { type: Type.NUMBER },
+      permit_info: { type: Type.STRING },
+      permit_url: { type: Type.STRING },
+      avg_daily_cost: { type: Type.STRING },
+      past_productions: { type: Type.ARRAY, items: { type: Type.STRING } },
+      weather_notes: { type: Type.STRING },
+      logistics_notes: { type: Type.STRING },
+      search_sources: { type: Type.ARRAY, items: { type: Type.STRING } },
+      image_query: { type: Type.STRING },
+      scene_description: { type: Type.STRING },
+    },
+    required: [
+      "id",
+      "name",
+      "city",
+      "country",
+      "score",
+      "mood_match",
+      "mood_fit_percent",
+      "era_match",
+      "era_fit_percent",
+      "permit_info",
+      "avg_daily_cost",
+      "past_productions",
+      "weather_notes",
+      "logistics_notes",
+      "search_sources",
+      "image_query",
+      "scene_description",
+    ],
+  },
+};
+
 export async function synthesizeLocations(
   query: SceneQuery,
   searchResults: Record<string, string>
 ): Promise<Location[]> {
-  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-
   const searchContext = Object.entries(searchResults)
     .map(([q, r]) => `Query: ${q}\nResults:\n${r}`)
     .join("\n\n---\n\n");
@@ -283,7 +481,9 @@ Return a JSON array of exactly 4 location objects. Each must include:
 Before assigning scores, explicitly compare each location against every stated requirement (mood, era, budget fit, region, special requirements) and penalize mismatches or unknowns. Scores should genuinely differ across the 4 locations based on real fit differences — avoid clustering all scores in the 80s-90s range. The same applies to mood_fit_percent and era_fit_percent: rate each honestly and independently per location instead of copying the overall score or defaulting every location to the same number.
 Base your response on the actual search data. Only return the JSON array.`;
 
-  const text = await generateWithRetry(model, prompt);
+  const text = await generateWithRetry(prompt, 2, {
+    responseSchema: LOCATION_SCHEMA,
+  });
 
   try {
     const cleaned = text.replace(/```json|```/g, "").trim();
@@ -321,8 +521,6 @@ export async function filterToRealLocations(locations: Location[]): Promise<Loca
     locations.map((loc) => verifyLocationExists(loc)),
   );
 
-  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-
   const context = locations
     .map(
       (loc, i) =>
@@ -342,7 +540,9 @@ ${context}
 Return a JSON array of ${locations.length} booleans, in the same order as the locations above (index 0 first) — true if verified real, specific, and findable, false if generic, composite, or district-only. Only return the JSON array, nothing else. Example: [true, false, true, true]`;
 
   try {
-    const text = await generateWithRetry(model, prompt);
+    const text = await generateWithRetry(prompt, 2, {
+      responseSchema: { type: Type.ARRAY, items: { type: Type.BOOLEAN } },
+    });
     const cleaned = text.replace(/```json|```/g, "").trim();
     const verdicts = JSON.parse(cleaned) as unknown;
 
@@ -367,8 +567,6 @@ export async function generateReasoning(
     return "No locations could be confirmed as real, findable places for this search.";
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-
   const prompt = `As a film location scout, summarize your findings for this scene in a tight, scannable format.
 
 Scene: ${query.description}
@@ -385,7 +583,7 @@ Return your response in this exact format, nothing else:
 
 Keep every line under 15 words. No fluff, no "I hope this helps," just the facts a busy filmmaker needs at a glance.`;
 
-  return await generateWithRetry(model, prompt);
+  return await generateWithRetry(prompt);
 }
 
 // Main agent orchestrator

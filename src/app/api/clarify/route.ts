@@ -1,8 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Type, type Schema } from "@google/genai";
+import { generateWithRetry } from "@/lib/agent";
 import type { SlotState, ClarifyResponse, ConversationTurn } from "@/types";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// Mirrors ClarifyResponse (src/types/index.ts) so the model returns
+// native structured JSON instead of relying purely on prompt
+// instructions — part of the latency fix in this migration (previously
+// no responseSchema/JSON mode was set at all).
+const CLARIFY_RESPONSE_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    message_type: {
+      type: Type.STRING,
+      enum: ["greeting", "small_talk", "vague", "off_topic", "scene_brief", "clarifying_answer"],
+    },
+    chat_reply: { type: Type.STRING },
+    next_question: {
+      type: Type.OBJECT,
+      nullable: true,
+      properties: {
+        text: { type: Type.STRING },
+        type: { type: Type.STRING, enum: ["text", "choice"] },
+        options: { type: Type.ARRAY, items: { type: Type.STRING } },
+        slot: {
+          type: Type.STRING,
+          enum: ["description", "mood", "era", "budget", "region", "duration", "requirements"],
+        },
+      },
+      required: ["text", "type", "slot"],
+    },
+    updated_slots: {
+      type: Type.OBJECT,
+      properties: {
+        description: { type: Type.STRING },
+        mood: { type: Type.STRING },
+        era: { type: Type.STRING },
+        budget: { type: Type.STRING },
+        region: { type: Type.STRING },
+        duration: { type: Type.STRING },
+        requirements: { type: Type.STRING },
+      },
+    },
+  },
+  required: ["next_question", "updated_slots"],
+};
 
 const SLOT_LABELS: Record<keyof SlotState, string> = {
   description: "what the scene is",
@@ -27,8 +68,6 @@ export async function POST(req: NextRequest) {
   if (missingSlots.length === 0) {
     return NextResponse.json({ next_question: null, updated_slots: {} } satisfies ClarifyResponse);
   }
-
-  const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
   const conversationText = history
     .map((turn) => `${turn.role === "user" ? "User" : "ScoutAI"}: ${turn.content}`)
@@ -116,8 +155,9 @@ Return ONLY valid JSON in this exact shape, nothing else:
 }`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const text = await generateWithRetry(prompt, 2, {
+      responseSchema: CLARIFY_RESPONSE_SCHEMA,
+    });
     const cleaned = text.replace(/```json|```/g, "").trim();
     const parsed: ClarifyResponse = JSON.parse(cleaned);
     return NextResponse.json(parsed);

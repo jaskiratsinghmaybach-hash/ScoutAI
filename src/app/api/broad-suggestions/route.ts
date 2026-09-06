@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { genAI, generateWithRetry } from "@/lib/agent";
+import { Type } from "@google/genai";
+import { generateWithRetry } from "@/lib/agent";
 import type { Location } from "@/types";
 
 export const runtime = "nodejs";
@@ -40,8 +41,9 @@ ${locationsBlock}
 Respond with ONLY a JSON array of 2-3 short strings, nothing else. Example: ["Compare budgets across these", "Which has the best permits?", "Find more like these"]`;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
-    const text = await generateWithRetry(model, prompt);
+    const text = await generateWithRetry(prompt, 2, {
+      responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } },
+    });
     const cleaned = text.replace(/```json|```/g, "").trim();
     const suggestions = JSON.parse(cleaned) as unknown;
 
