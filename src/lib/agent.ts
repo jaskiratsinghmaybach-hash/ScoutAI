@@ -5,7 +5,7 @@ import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 
 // Vertex AI client (replaces the old AI Studio GoogleGenerativeAI
 // client).
-//
+
 // LOCAL DEV: auth is handled transparently by Application Default
 // Credentials (gcloud auth application-default login) — no key
 // needed, no code branch required, ADC just works.
