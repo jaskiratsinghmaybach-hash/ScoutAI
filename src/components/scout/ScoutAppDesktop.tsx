@@ -899,72 +899,17 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                       )}
                       <div className="px-6 pb-6 pt-2 space-y-3">
                         {phase === "clarifying" && currentQuestion ? (
-                          currentQuestion.type === "choice" ? (
-                            <>
-                              <QuestionCard
-                                key={currentQuestion.text}
-                                question={currentQuestion}
-                                onAnswer={handleAnswer}
-                                onSkipAll={handleSkipAll}
-                                prefill={suggestionPrefill}
-                                disabled={!canSend}
-                              />
-                              <BorderGlow {...GLOW_PROPS}>
-                                <form
-                                  onSubmit={(e) => {
-                                    e.preventDefault();
-                                    if (!canSend) return;
-                                    if (followUpText.trim().length === 0)
-                                      return;
-                                    const message = followUpText.trim();
-                                    setFollowUpText("");
-                                    handleAnswer(message);
-                                  }}
-                                  className="flex items-center gap-2 p-2.5"
-                                >
-                                  <input
-                                    value={followUpText}
-                                    onChange={(e) =>
-                                      setFollowUpText(e.target.value)
-                                    }
-                                    placeholder="Or type your own answer..."
-                                    disabled={!canSend}
-                                    className="h-10 flex-1 rounded-full bg-transparent px-3 text-sm text-foreground placeholder-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                                  />
-                                  <span
-                                    title={
-                                      canSend
-                                        ? undefined
-                                        : "Finish the quick setup on the right to send messages"
-                                    }
-                                  >
-                                    <Button
-                                      type="submit"
-                                      disabled={
-                                        !canSend ||
-                                        followUpText.trim().length === 0
-                                      }
-                                      className="h-9 w-9 shrink-0 rounded-full bg-white text-black hover:bg-zinc-200 disabled:bg-zinc-800 disabled:text-zinc-500 flex items-center justify-center p-0 transition-all duration-200"
-                                    >
-                                      <ArrowUp
-                                        className="h-4 w-4"
-                                        strokeWidth={2.5}
-                                      />
-                                    </Button>
-                                  </span>
-                                </form>
-                              </BorderGlow>
-                            </>
-                          ) : (
-                            <QuestionCard
-                              key={currentQuestion.text}
-                              question={currentQuestion}
-                              onAnswer={handleAnswer}
-                              onSkipAll={handleSkipAll}
-                              prefill={suggestionPrefill}
-                              disabled={!canSend}
-                            />
-                          )
+                          // QuestionCard always renders its own text input
+                          // (choice type: chip buttons + "Or type your own…" field;
+                          //  text type: plain input). Never show a second box.
+                          <QuestionCard
+                            key={currentQuestion.text}
+                            question={currentQuestion}
+                            onAnswer={handleAnswer}
+                            onSkipAll={handleSkipAll}
+                            prefill={suggestionPrefill}
+                            disabled={!canSend}
+                          />
                         ) : phase === "clarifying" || phase === "intro" ? (
                           // Chat-only turn (greeting/small talk reply) — no
                           // question pending, just let the user keep talking.
