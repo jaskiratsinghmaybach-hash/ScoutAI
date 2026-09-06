@@ -91,7 +91,22 @@ function buildGenAIClient() {
     token_url: "https://sts.googleapis.com/v1/token",
     service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT_EMAIL}:generateAccessToken`,
     subject_token_supplier: {
-      getSubjectToken: getVercelOidcToken,
+      // IMPORTANT: google-auth-library calls
+      // `subjectTokenSupplier.getSubjectToken(supplierContext)` with ONE
+      // positional argument — a GCP-internal SupplierContext object shaped
+      // like `{ audience: "//iam.googleapis.com/projects/.../providers/vercel", ... }`.
+      // Passing `getVercelOidcToken` directly as a bare function reference
+      // means IT receives that GCP context object as its own `options`
+      // argument. Since `supplierContext.audience` is a truthy string,
+      // getVercelOidcToken's internal `if (options?.audience)` check fires
+      // and incorrectly treats the GCP provider resource name as a
+      // requested Vercel custom-audience exchange target — which is
+      // exactly the root cause of every "audience does not match" /
+      // "Invalid audience" error seen while debugging this. The fix is to
+      // wrap it in a closure that ignores whatever argument
+      // google-auth-library passes in and calls getVercelOidcToken() with
+      // genuinely zero arguments, every time.
+      getSubjectToken: () => getVercelOidcToken(),
     },
   });
 
