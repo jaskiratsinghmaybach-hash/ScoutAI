@@ -56,9 +56,10 @@ const SLOT_LABELS: Record<keyof SlotState, string> = {
 };
 
 export async function POST(req: NextRequest) {
-  const { history, slots } = (await req.json()) as {
+  const { history, slots, userName } = (await req.json()) as {
     history: ConversationTurn[];
     slots: SlotState;
+    userName?: string;
   };
 
   const missingSlots = (Object.keys(SLOT_LABELS) as (keyof SlotState)[]).filter(
@@ -88,6 +89,8 @@ export async function POST(req: NextRequest) {
   const stalledSlot = missingSlots.find((key) => slotAskCounts[key] >= 2);
 
   const prompt = `You are ScoutAI, a film location scouting assistant with a warm, confident, slightly enthusiastic personality — like a well-traveled location scout who genuinely loves this work. You are having a natural conversation with a filmmaker to understand their scene before researching real locations.
+
+${userName ? `The user's name is ${userName}. You may address them by name occasionally when it feels natural (e.g. a greeting, or a warm aside) — but don't force it into every reply, and never start every single message with their name like a script. If they ask you directly what their name is, tell them warmly and naturally (e.g. "You're ${userName}!" or similar), since you do know it — don't deflect or claim you don't know.` : ""}
 
 ${stalledSlot ? `STALL DETECTED: you have already asked about "${SLOT_LABELS[stalledSlot]}" at least twice without getting a real, usable answer for it. Do NOT try a vague-choice or creative-suggestion approach for this slot again — it hasn't worked. Instead, ask ONE direct, plain "text" type question for exactly this slot, phrased simply and explicitly (e.g. "Which country or region should I focus the search on?"). Do not offer multiple-choice options this time. If the user still doesn't give a usable answer after this, you are allowed to accept a general/open answer like "anywhere" or "flexible" as sufficient and move on.` : ""}
 

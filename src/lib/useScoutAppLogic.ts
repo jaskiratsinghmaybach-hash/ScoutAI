@@ -778,7 +778,11 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         const res = await fetch("/api/clarify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ history: updatedHistory, slots: updatedSlots }),
+          body: JSON.stringify({
+            history: updatedHistory,
+            slots: updatedSlots,
+            userName: effectiveDisplayName || undefined,
+          }),
           signal: controller.signal,
         });
 
