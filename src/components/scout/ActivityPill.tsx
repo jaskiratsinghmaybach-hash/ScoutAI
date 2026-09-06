@@ -15,7 +15,7 @@ export function ActivityPill({
     const isDone = run.packet !== null;
     const locationCount = run.packet?.locations.length ?? 0;
     const hasError = Boolean(run.error || run.steps.some((s) => s.status === "error"));
-    const isStuck = !isDone && !hasError && run.steps.length > 0 && run.steps.every((s) => s.status !== "running");
+    const isStuck = !isDone && !hasError && run.status !== "running" && run.steps.length > 0 && run.steps.every((s) => s.status !== "running");
 
     return (
         <button

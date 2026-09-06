@@ -13,6 +13,7 @@ import { AttachedCardChip } from "@/components/scout/AttachedCardChip";
 import { BroadSuggestions } from "@/components/scout/BroadSuggestions";
 import { LatestRunIndicator } from "@/components/scout/LatestRunIndicator";
 import { UserMessage } from "@/components/scout/UserMessage";
+import { AssistantMessage } from "@/components/scout/AssistantMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
 import { ContinuityModal } from "@/components/scout/ContinuityModal";
 import { getSiblingInfo, getActivePath, addMessage } from "@/lib/conversationTree";
@@ -544,9 +545,7 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
                         }
                       />
                     ) : (
-                      <div className="max-w-[92%] text-sm leading-relaxed text-foreground-muted">
-                        {node.content}
-                      </div>
+                      <AssistantMessage content={node.content} />
                     )}
 
                     {run && (

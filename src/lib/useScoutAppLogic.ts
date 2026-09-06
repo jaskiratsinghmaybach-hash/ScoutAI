@@ -445,6 +445,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         }
 
         await new Promise<void>((resolve, reject) => {
+          let consecutiveFailures = 0;
           const poll = async () => {
             if (controller.signal.aborted) {
               resolve();
@@ -463,6 +464,8 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
                 packet: ScoutRun["packet"];
                 error: string | null;
               };
+
+              consecutiveFailures = 0;
 
               setRuns((prev) =>
                 prev.map((r) => (r.id === runId ? { ...r, steps: data.steps } : r)),
@@ -500,11 +503,19 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
                 resolve();
               }
             } catch (err) {
-              if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
-                pollTimerRef.current = null;
+              if (controller.signal.aborted) {
+                resolve();
+                return;
               }
-              reject(err);
+              consecutiveFailures++;
+              console.warn(`Scout poll attempt failed (${consecutiveFailures}/3):`, err);
+              if (consecutiveFailures >= 3) {
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                }
+                reject(err);
+              }
             }
           };
 
@@ -653,6 +664,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         }
 
         await new Promise<void>((resolve, reject) => {
+          let consecutiveFailures = 0;
           const poll = async () => {
             if (controller.signal.aborted) {
               resolve();
@@ -671,6 +683,8 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
                 packet: ScoutRun["packet"];
                 error: string | null;
               };
+
+              consecutiveFailures = 0;
 
               setRuns((prev) =>
                 prev.map((r) =>
@@ -718,11 +732,19 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
                 resolve();
               }
             } catch (err) {
-              if (pollTimerRef.current) {
-                clearInterval(pollTimerRef.current);
-                pollTimerRef.current = null;
+              if (controller.signal.aborted) {
+                resolve();
+                return;
               }
-              reject(err);
+              consecutiveFailures++;
+              console.warn(`Scout retry poll attempt failed (${consecutiveFailures}/3):`, err);
+              if (consecutiveFailures >= 3) {
+                if (pollTimerRef.current) {
+                  clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                }
+                reject(err);
+              }
             }
           };
 
@@ -802,9 +824,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         setSlots(mergedSlots);
 
         const isChatOnly =
-          (data.message_type === "greeting" ||
-            data.message_type === "small_talk" ||
-            data.message_type === "off_topic") &&
+          Boolean(data.chat_reply && data.chat_reply.trim().length > 0) &&
           !data.next_question;
 
         if (data.next_question) {
@@ -1329,90 +1349,78 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
     if (!msg) return;
 
     setFollowUpText("");
+    setIsFollowingUp(true);
 
-    // No card attached — exactly the original behavior, unchanged.
-    if (!attachedCard) {
-      setIsFollowingUp(true);
-
-      const updatedHistory: ConversationTurn[] = [
-        ...history,
-        { role: "user", content: msg },
-      ];
-      setTree((prevTree) => {
-        const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
-        return addMessage(prevTree, leafId, "user", msg).tree;
-      });
-
-      const updatedSlots = {
-        ...slots,
-        description: `${slots.description} | Follow-up: ${msg}`,
-      };
-      setSlots(updatedSlots);
-
-      dispatchScout(updatedSlots, msg, updatedHistory).finally(() => {
-        setIsFollowingUp(false);
-      });
-      return;
-    }
-
-    // A card is attached — this message needs classification before
-    // anything else happens. Post the user's message to the tree
-    // immediately (with the reference chip attached to it) so it
-    // appears right away rather than waiting on the classify call.
     const cardForThisMessage = attachedCard;
     setAttachedCard(null);
-    setIsClassifyingCardChat(true);
+
+    const updatedHistory: ConversationTurn[] = [
+      ...history,
+      { role: "user", content: msg },
+    ];
 
     let userNodeId: string | null = null;
     setTree((prevTree) => {
       const leafId = getActivePath(prevTree).at(-1)?.id ?? null;
-      const result = addMessage(prevTree, leafId, "user", msg, cardForThisMessage);
+      const result = addMessage(prevTree, leafId, "user", msg, cardForThisMessage ?? undefined);
       userNodeId = result.nodeId;
       return result.tree;
     });
 
+    // Collect currently visible / relevant locations for context
+    const currentRun =
+      runs.find((r) => r.id === (rightPanelRunId || activeRunId)) ??
+      runs.at(-1);
+    const contextLocations = cardForThisMessage
+      ? cardForThisMessage.locations
+      : currentRun?.packet?.locations ?? [];
+
     try {
-      const res = await fetch("/api/card-chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: msg,
-          scope: cardForThisMessage.scope,
-          locations: cardForThisMessage.locations,
+          history: updatedHistory,
+          locations: contextLocations,
+          slots,
+          userName: effectiveDisplayName || undefined,
         }),
       });
+
+      if (!res.ok) {
+        throw new Error(`Chat API error (${res.status})`);
+      }
+
       const data = (await res.json()) as {
-        intent?: "similar" | "answer";
-        answer?: string;
-        refinement_context?: string;
-        error?: string;
+        intent?: "chat" | "scout";
+        chat_reply?: string;
+        scout_refinement?: string;
+        updated_slots?: Partial<SlotState>;
       };
 
-      if (data.intent === "similar" && data.refinement_context) {
-        // "Find more like this" — run the full pipeline again, seeded
-        // with the referenced card(s) as refinement context. Reuses
-        // the existing priorContext mechanism; runKind: "refine" only
-        // changes which step labels the agent-activity UI shows.
-        const updatedHistory: ConversationTurn[] = [
-          ...history,
-          { role: "user", content: msg },
-        ];
-        const updatedSlots = {
+      if (data.intent === "chat" && data.chat_reply) {
+        // Direct answer in chat — NO AGENT ACTIVITY RUN!
+        setTree((prevTree) => {
+          return addMessage(prevTree, userNodeId, "assistant", data.chat_reply!).tree;
+        });
+      } else if (data.intent === "scout") {
+        // User explicitly asked to find new locations or run a new search
+        const mergedSlots = {
           ...slots,
-          description: `${slots.description} | Follow-up: ${msg}`,
+          ...(data.updated_slots ?? {}),
+          description: `${slots.description} | Refinement: ${msg}`,
         };
-        setSlots(updatedSlots);
+        setSlots(mergedSlots);
         await dispatchScout(
-          updatedSlots,
-          data.refinement_context,
+          mergedSlots,
+          data.scout_refinement || msg,
           updatedHistory,
           "refine",
         );
-      } else if (data.intent === "answer" && data.answer) {
-        // Direct question about the referenced card — answer in chat,
-        // no new run, cards on screen untouched.
+      } else if (data.chat_reply) {
         setTree((prevTree) => {
-          return addMessage(prevTree, userNodeId, "assistant", data.answer!).tree;
+          return addMessage(prevTree, userNodeId, "assistant", data.chat_reply!).tree;
         });
       } else {
         setTree((prevTree) => {
@@ -1420,22 +1428,22 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
             prevTree,
             userNodeId,
             "assistant",
-            data.error ??
-            "Sorry, I couldn't work out how to respond to that — could you try rephrasing?",
+            "### ScoutAI Note\n\nI couldn't quite determine the best next step. Would you like me to look for new locations or tell you more about the ones found?",
           ).tree;
         });
       }
     } catch (err) {
-      console.error("card-chat request failed:", err);
+      console.error("Follow-up chat failed:", err);
       setTree((prevTree) => {
         return addMessage(
           prevTree,
           userNodeId,
           "assistant",
-          "Sorry, something went wrong answering that — please try again.",
+          "### ScoutAI Note\n\nI ran into a temporary issue answering that. Please try rephrasing or asking again!",
         ).tree;
       });
     } finally {
+      setIsFollowingUp(false);
       setIsClassifyingCardChat(false);
     }
   }

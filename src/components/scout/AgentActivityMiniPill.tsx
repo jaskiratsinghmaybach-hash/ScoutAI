@@ -43,7 +43,7 @@ export function AgentActivityMiniPill({
   const lastDoneStep = [...run.steps]
     .filter((s) => s.status === "done")
     .sort((a, b) => b.step - a.step)[0];
-  const isStuck = !isDone && !hasError && !runningStep && run.steps.length > 0;
+  const isStuck = !isDone && !hasError && run.status !== "running" && !runningStep && run.steps.length > 0;
   const currentStep = runningStep ?? lastDoneStep ?? run.steps[0];
   const labels = run.runKind === "refine" ? REFINE_STEP_LABELS : SEARCH_STEP_LABELS;
   const label = currentStep

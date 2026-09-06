@@ -12,6 +12,7 @@ import { AttachedCardChip } from "@/components/scout/AttachedCardChip";
 import { BroadSuggestions } from "@/components/scout/BroadSuggestions";
 import { LatestRunIndicator } from "@/components/scout/LatestRunIndicator";
 import { UserMessage } from "@/components/scout/UserMessage";
+import { AssistantMessage } from "@/components/scout/AssistantMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
 import { AppHeader } from "@/components/scout/AppHeader";
 import { ContinuityModal } from "@/components/scout/ContinuityModal";
@@ -685,9 +686,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                               }
                             />
                           ) : (
-                            <div className="max-w-[90%] text-sm leading-relaxed text-foreground-muted">
-                              {node.content}
-                            </div>
+                            <AssistantMessage content={node.content} />
                           )}
 
                           {/* Agent activity now lives exclusively on the right

@@ -61,6 +61,14 @@ export async function POST(req: NextRequest) {
 
     await updateScoutRun(runId, { search_results: searchResults });
 
+    // Seed step 3 as running immediately so there is zero gap in step progression
+    await pushStep(runId, steps, {
+      step: 3,
+      action: "Scouting and ranking locations",
+      detail: "Gemini is synthesizing research into scouting packets...",
+      status: "running",
+    });
+
     // Proceed to Stage 3 (synthesis)
     triggerStageInBackground(req, "/api/scout/stage-3", { runId }, runId);
 

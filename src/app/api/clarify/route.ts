@@ -120,7 +120,8 @@ STEP 2 — Respond based on the classification:
 
 If greeting, small_talk, or off_topic:
 - Do NOT ask a slot-filling question.
-- Reply warmly and briefly in ScoutAI's voice, acknowledge them, and invite them to describe the scene or project. Keep it to 1-2 sentences.
+- Reply warmly in ScoutAI's voice.
+- FORMAT: Start with a punchy markdown heading (e.g. "### Great to Connect!" or "### You're ${userName || "Filmmaker"}!"), followed by 1-2 friendly sentences acknowledging them and inviting them to describe what they're looking to scout.
 - Set "next_question" to null and put your reply in "chat_reply".
 
 If vague:

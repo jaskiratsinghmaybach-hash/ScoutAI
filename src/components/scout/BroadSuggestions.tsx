@@ -1,17 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { X, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
 import type { Location } from "@/types";
 
 /**
- * Row of 2-3 broad suggestion chips above the message box, shown only
- * while cards are currently on screen (parent controls that
- * condition). Scoped to ALL locations in the current packet together —
- * comparative/broad questions, not about any single card (that's
- * CardSuggestions). Picking one calls onPick, same contract as
- * CardSuggestions: parent fills the message box and attaches the
- * (all-scope) card reference.
+ * Collapsible row of broad suggestion chips above the message box,
+ * shown only while cards are on screen. Kept collapsed by default behind
+ * a sleek suggestions button with an arrow, so it doesn't clutter the
+ * important chat composer space until the user asks for suggestions.
  */
 export function BroadSuggestions({
   locations,
@@ -21,13 +18,14 @@ export function BroadSuggestions({
   onPick: (text: string) => void;
 }) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+
   // Key by the set of location ids so suggestions refresh when the
-  // underlying card set actually changes (a new run replacing the
-  // old 4), not on every unrelated re-render.
+  // underlying card set actually changes
   const locationsKey = locations.map((l) => l.id).join(",");
 
   // Store the key alongside state so we can reset `dismissed` instantly
-  // during render when `locationsKey` changes without causing cascading effect renders.
+  // during render when `locationsKey` changes
   const [dismissedState, setDismissedState] = useState<{
     key: string;
     set: Set<number>;
@@ -45,8 +43,6 @@ export function BroadSuggestions({
 
   useEffect(() => {
     if (locations.length === 0) {
-      // Nothing to fetch — `visible` below already renders nothing
-      // when `locations` is empty, so there's no state to reset here.
       return;
     }
     const requestId = ++requestIdRef.current;
@@ -64,8 +60,7 @@ export function BroadSuggestions({
         if (requestIdRef.current !== requestId) return;
         setSuggestions([]);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationsKey]);
+  }, [locationsKey, locations]);
 
   const visible =
     locations.length === 0
@@ -75,39 +70,62 @@ export function BroadSuggestions({
   if (visible.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2 px-1">
-      {visible.map(({ s, i }) => (
-        <div
-          key={i}
-          // Light glass effect rather than a solid dark chip — these
-          // sit right on top of the message thread, so the fill needs
-          // to stay faint (12% black) with a strong blur doing the
-          // work of separating the chip from what's behind it, instead
-          // of an opaque tint hiding it. Hover nudges the fill up
-          // slightly for feedback without going back to a solid block.
-          className="group inline-flex items-center gap-1.5 rounded-full bg-black/10 pl-3 pr-1.5 py-1.5 text-xs font-medium text-neutral-200 backdrop-blur-xl ring-1 ring-white/10 transition-colors hover:bg-black/20"
-        >
-          <button type="button" onClick={() => onPick(s)} className="hover:text-white">
-            {s}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setDismissedState((prev) => {
-                const currentSet =
-                  prev.key === locationsKey ? prev.set : new Set<number>();
-                const updated = new Set(currentSet);
-                updated.add(i);
-                return { key: locationsKey, set: updated };
-              })
-            }
-            aria-label="Dismiss suggestion"
-            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/15 hover:text-white"
-          >
-            <X className="h-3 w-3" />
-          </button>
+    <div className="flex flex-col items-start gap-1.5 px-1">
+      {/* Sleek toggle button with suggestions icon and arrow indicator */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="group inline-flex items-center gap-1.5 rounded-full bg-neutral-900/80 hover:bg-neutral-800 px-2.5 py-1 text-xs font-medium text-neutral-300 hover:text-white ring-1 ring-white/10 transition-all active:scale-95 shadow-sm"
+        title={isOpen ? "Hide suggestions" : "Show suggested questions"}
+      >
+        <Sparkles className="h-3.5 w-3.5 text-amber-400 group-hover:rotate-12 transition-transform duration-200" />
+        <span>Suggestions</span>
+        <span className="text-[10px] text-neutral-400">({visible.length})</span>
+        {isOpen ? (
+          <ChevronDown className="h-3.5 w-3.5 text-neutral-400 group-hover:text-white" />
+        ) : (
+          <ChevronUp className="h-3.5 w-3.5 text-neutral-400 group-hover:text-white" />
+        )}
+      </button>
+
+      {/* Suggestion chips (only revealed when toggled open) */}
+      {isOpen && (
+        <div className="flex flex-wrap gap-2 pt-1 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          {visible.map(({ s, i }) => (
+            <div
+              key={i}
+              className="group inline-flex items-center gap-1.5 rounded-full bg-neutral-950/80 pl-3 pr-1.5 py-1.5 text-xs font-medium text-neutral-200 backdrop-blur-xl ring-1 ring-white/12 transition-colors hover:bg-neutral-900 hover:text-white shadow-sm"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  onPick(s);
+                  setIsOpen(false);
+                }}
+                className="hover:text-white text-left"
+              >
+                {s}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setDismissedState((prev) => {
+                    const currentSet =
+                      prev.key === locationsKey ? prev.set : new Set<number>();
+                    const updated = new Set(currentSet);
+                    updated.add(i);
+                    return { key: locationsKey, set: updated };
+                  })
+                }
+                aria-label="Dismiss suggestion"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/15 hover:text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

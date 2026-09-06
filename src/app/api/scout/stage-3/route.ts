@@ -46,6 +46,14 @@ export async function POST(req: NextRequest) {
 
     await updateScoutRun(runId, { candidate_locations: candidateLocations });
 
+    // Seed step 4 as running immediately so there is zero gap in step progression
+    await pushStep(runId, steps, {
+      step: 4,
+      action: "Validating site details & accessibility",
+      detail: `Cross-referencing site details & accessibility for ${candidateLocations.length} locations...`,
+      status: "running",
+    });
+
     triggerStageInBackground(req, "/api/scout/stage-4", { runId }, runId);
 
     return NextResponse.json({ ok: true });

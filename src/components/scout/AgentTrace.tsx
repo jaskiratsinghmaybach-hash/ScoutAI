@@ -41,7 +41,8 @@ export function AgentTrace({
 }) {
   const labels = runKind === "refine" ? REFINE_STEP_LABELS : SEARCH_STEP_LABELS;
   const hasError = Boolean(error || steps.some((s) => s.status === "error"));
-  const isStuck = !isDone && !hasError && steps.length > 0 && steps.every((s) => s.status !== "running");
+  // Only consider stuck if there is an error or abnormal failure, not during normal step transitions
+  const isStuck = !isDone && hasError;
 
   return (
     <div className="rounded-lg border border-border bg-surface p-4 shadow-xl">
@@ -51,8 +52,6 @@ export function AgentTrace({
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
           ) : hasError ? (
             <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-          ) : isStuck ? (
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
           ) : (
             <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
           )}
@@ -61,9 +60,7 @@ export function AgentTrace({
               ? "Agent activity • Complete"
               : hasError
               ? "Agent activity • Paused on error"
-              : isStuck
-              ? "Agent activity • Paused"
-              : "Agent activity"}
+              : "Agent activity • In progress"}
           </span>
         </div>
         {onRetry && (
@@ -137,8 +134,8 @@ export function AgentTrace({
         })}
       </div>
 
-      {/* Action footer for stuck/error runs */}
-      {(hasError || isStuck || error) && (
+      {/* Action footer for error runs */}
+      {(hasError || error) && (
         <div className="mt-4 rounded-md border border-rose-500/20 bg-rose-950/20 p-3">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
