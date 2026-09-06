@@ -29,15 +29,27 @@ import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 // Vertex AI's global endpoint. Only gemini-3.5-flash/-flash-lite
 // currently also support the regional "us"/"eu" multi-regions.
 function buildGenAIClient() {
-  const {
-    GOOGLE_CLOUD_PROJECT,
-    GOOGLE_CLOUD_LOCATION,
-    GCP_PROJECT_ID,
-    GCP_PROJECT_NUMBER,
-    GCP_SERVICE_ACCOUNT_EMAIL,
-    GCP_WORKLOAD_IDENTITY_POOL_ID,
-    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID,
-  } = process.env;
+  // .trim() on every value here is a deliberate defensive measure:
+  // a stray leading/trailing tab or space typed or pasted into
+  // Vercel's env var UI is invisible in the dashboard but breaks the
+  // WIF audience string built below, causing a confusing "Invalid
+  // value for audience" 400 from Google's STS endpoint that gives no
+  // hint the actual problem is whitespace. This has already happened
+  // once during setup — trimming here makes that whole class of bug
+  // impossible going forward, regardless of how the env vars get
+  // entered.
+  const trim = (v: string | undefined) => v?.trim();
+  const GOOGLE_CLOUD_PROJECT = trim(process.env.GOOGLE_CLOUD_PROJECT);
+  const GOOGLE_CLOUD_LOCATION = trim(process.env.GOOGLE_CLOUD_LOCATION);
+  const GCP_PROJECT_ID = trim(process.env.GCP_PROJECT_ID);
+  const GCP_PROJECT_NUMBER = trim(process.env.GCP_PROJECT_NUMBER);
+  const GCP_SERVICE_ACCOUNT_EMAIL = trim(process.env.GCP_SERVICE_ACCOUNT_EMAIL);
+  const GCP_WORKLOAD_IDENTITY_POOL_ID = trim(
+    process.env.GCP_WORKLOAD_IDENTITY_POOL_ID
+  );
+  const GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID = trim(
+    process.env.GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
+  );
 
   const usingWIF =
     GCP_PROJECT_NUMBER &&
