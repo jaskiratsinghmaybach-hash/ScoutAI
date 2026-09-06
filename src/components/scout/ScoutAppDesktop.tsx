@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useEffect } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -119,6 +120,40 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
     stoppedDuringRef,
     lastScoutArgsRef,
   } = props;
+
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const lastAssistantNodeIdRef = useRef<string | null>(null);
+  const lastQuestionTextRef = useRef<string | null>(null);
+
+  // Smart auto-scroll: ONLY scroll down ONCE when a new response or question from Gemini arrives
+  useEffect(() => {
+    const latestAssistantNode = [...activePathNodes]
+      .reverse()
+      .find((n) => n.role === "assistant");
+    const latestAssistantId = latestAssistantNode?.id ?? null;
+    const currentQuestionText = currentQuestion?.text ?? null;
+
+    let shouldScroll = false;
+
+    if (latestAssistantId && latestAssistantId !== lastAssistantNodeIdRef.current) {
+      lastAssistantNodeIdRef.current = latestAssistantId;
+      shouldScroll = true;
+    }
+
+    if (currentQuestionText && currentQuestionText !== lastQuestionTextRef.current) {
+      lastQuestionTextRef.current = currentQuestionText;
+      shouldScroll = true;
+    }
+
+    if (shouldScroll && chatScrollRef.current) {
+      requestAnimationFrame(() => {
+        chatScrollRef.current?.scrollTo({
+          top: chatScrollRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      });
+    }
+  }, [activePathNodes, currentQuestion]);
 
   if (chatId && !hasHydrated) {
     return (
@@ -628,7 +663,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                   </div>
                 </div>
 
-                <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+                <div ref={chatScrollRef} className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
                   <motion.div
                     key={chatId ?? "landing"}
                     initial={{ opacity: 0, y: 10 }}

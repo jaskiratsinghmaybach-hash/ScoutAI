@@ -74,6 +74,38 @@ function pickRandomThinkingMessage(): string {
   ];
 }
 
+function normalizeBudgetTier(budget: string | undefined): "micro" | "indie" | "mid" | "studio" {
+  const lower = (budget || "").toLowerCase().trim();
+  if (
+    lower.includes("creator") ||
+    lower.includes("solo") ||
+    lower.includes("micro") ||
+    lower.includes("< 500") ||
+    lower.includes("<$500") ||
+    lower.includes("influencer")
+  ) {
+    return "micro";
+  }
+  if (
+    lower.includes("studio") ||
+    lower.includes("all-in") ||
+    lower.includes("10,000+") ||
+    lower.includes("10000")
+  ) {
+    return "studio";
+  }
+  if (
+    lower.includes("commercial") ||
+    lower.includes("mid") ||
+    lower.includes("2,500") ||
+    lower.includes("2500") ||
+    lower.includes("10,000")
+  ) {
+    return "mid";
+  }
+  return "indie";
+}
+
 const EMPTY_SLOTS: SlotState = {
   description: "",
   mood: "",
@@ -415,11 +447,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
             description: finalSlots.description,
             mood: finalSlots.mood,
             era: finalSlots.era,
-            budget: (finalSlots.budget || "indie") as
-              | "micro"
-              | "indie"
-              | "mid"
-              | "studio",
+            budget: normalizeBudgetTier(finalSlots.budget),
             region: finalSlots.region,
             requirements: finalSlots.requirements
               ? finalSlots.requirements.split(",").map((r: string) => r.trim())
@@ -600,11 +628,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
             "Film scene location scouting",
           mood: slots.mood || "",
           era: slots.era || "",
-          budget: (slots.budget || "indie") as
-            | "micro"
-            | "indie"
-            | "mid"
-            | "studio",
+          budget: normalizeBudgetTier(slots.budget),
           region: slots.region || "",
           requirements: slots.requirements
             ? slots.requirements.split(",").map((req: string) => req.trim())

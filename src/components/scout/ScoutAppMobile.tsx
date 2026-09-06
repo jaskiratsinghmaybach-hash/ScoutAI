@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -132,6 +132,40 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
     setShowChatsList(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const lastAssistantNodeIdRef = useRef<string | null>(null);
+  const lastQuestionTextRef = useRef<string | null>(null);
+
+  // Smart auto-scroll: ONLY scroll down ONCE when a new response or question from Gemini arrives
+  useEffect(() => {
+    const latestAssistantNode = [...activePathNodes]
+      .reverse()
+      .find((n) => n.role === "assistant");
+    const latestAssistantId = latestAssistantNode?.id ?? null;
+    const currentQuestionText = currentQuestion?.text ?? null;
+
+    let shouldScroll = false;
+
+    if (latestAssistantId && latestAssistantId !== lastAssistantNodeIdRef.current) {
+      lastAssistantNodeIdRef.current = latestAssistantId;
+      shouldScroll = true;
+    }
+
+    if (currentQuestionText && currentQuestionText !== lastQuestionTextRef.current) {
+      lastQuestionTextRef.current = currentQuestionText;
+      shouldScroll = true;
+    }
+
+    if (shouldScroll && chatScrollRef.current) {
+      requestAnimationFrame(() => {
+        chatScrollRef.current?.scrollTo({
+          top: chatScrollRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      });
+    }
+  }, [activePathNodes, currentQuestion]);
 
   // Onboarding lives in the Scout tab's right-panel component
   // (ResultsPanel -> OnboardingFlow) — same component desktop shows
@@ -499,7 +533,7 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
         </div>
       ) : (
         <>
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <div ref={chatScrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
             <motion.div
               key={chatId ?? "landing"}
               initial={{ opacity: 0, y: 10 }}

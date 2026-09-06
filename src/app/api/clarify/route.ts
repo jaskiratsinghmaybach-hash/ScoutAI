@@ -139,7 +139,16 @@ If vague:
 If scene_brief or clarifying_answer:
 - Re-read the full conversation. Extract every slot the content actually supports — not just the one slot the most recent question was about. If the user's reply is a rich scene idea (e.g. picked from suggestions), it likely fills description AND implies mood/era — fill all of them.
 - Pick the SINGLE most useful next question to ask, phrased naturally and conversationally — not robotic. Reference what they already told you if relevant. Only ask about slots that are still genuinely missing after your extraction above.
-- Decide if this question is better as free text (open-ended, like describing mood or requirements) or multiple choice (like budget tier, region, duration ranges). Provide 3-5 short options for choice questions.
+- SPECIAL RULE FOR "budget" SLOT:
+  When asking about the "budget" slot:
+  - Question "type" MUST be "choice".
+  - Question "text" MUST be: "What is your target location budget for the shoot? Pick a tier below or feel free to type your exact numbers / daily budget specifications:"
+  - Question "options" MUST be exactly these 4 tiers with USD estimates:
+    1. "Creator / Solo (< $500/day)"
+    2. "Indie Production ($500 – $2,500/day)"
+    3. "Commercial / Mid-Tier ($2,500 – $10,000/day)"
+    4. "Studio / All-In ($10,000+/day)"
+- For other slots, decide if the question is better as free text (open-ended, like describing mood or requirements) or multiple choice (like region, duration ranges). Provide 3-5 short options for choice questions.
 - Never ask the exact same question text you already asked earlier in this conversation — if the user's reply didn't answer it (e.g. they said "surprise me" instead), treat that as vague and follow the vague branch instead of repeating yourself.
 - If ALL the missing information now has a reasonable answer (from conversation history), return next_question as null and leave chat_reply empty.
 
@@ -185,6 +194,25 @@ Return ONLY valid JSON in this exact shape, nothing else:
     }
 
     const fallbackSlot = missingSlots[0];
+    if (fallbackSlot === "budget") {
+      return NextResponse.json({
+        message_type: "scene_brief",
+        chat_reply: "",
+        next_question: {
+          text: "What is your target location budget for the shoot? Pick a tier below or feel free to type your exact numbers / daily budget specifications:",
+          type: "choice",
+          slot: "budget",
+          options: [
+            "Creator / Solo (< $500/day)",
+            "Indie Production ($500 – $2,500/day)",
+            "Commercial / Mid-Tier ($2,500 – $10,000/day)",
+            "Studio / All-In ($10,000+/day)",
+          ],
+        },
+        updated_slots: {},
+      } satisfies ClarifyResponse);
+    }
+
     return NextResponse.json({
       message_type: "scene_brief",
       chat_reply: "",

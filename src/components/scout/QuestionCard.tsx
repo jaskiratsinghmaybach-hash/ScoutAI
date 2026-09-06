@@ -35,21 +35,58 @@ export function QuestionCard({
   return (
     <div className="space-y-2">
       {question.type === "choice" && question.options ? (
-        <div className="flex flex-wrap gap-2">
-          {question.options.map((opt) => (
-            <span
-              key={opt}
-              title={disabled ? "Complete onboarding to start sending messages" : undefined}
-            >
-              <button
-                onClick={() => !disabled && onAnswer(opt)}
-                disabled={disabled}
-                className="rounded-full bg-neutral-800/60 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-800/60 disabled:hover:text-neutral-300"
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap gap-2">
+            {question.options.map((opt) => (
+              <span
+                key={opt}
+                title={disabled ? "Complete onboarding to start sending messages" : undefined}
               >
-                {opt}
-              </button>
-            </span>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => !disabled && onAnswer(opt)}
+                  disabled={disabled}
+                  className="rounded-full bg-neutral-800/60 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-neutral-300 backdrop-blur-sm transition-all duration-200 hover:bg-neutral-800 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-800/60 disabled:hover:text-neutral-300"
+                >
+                  {opt}
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <BorderGlow
+            borderRadius={30}
+            glowRadius={24}
+            glowIntensity={0.5}
+            coneSpread={30}
+            edgeSensitivity={25}
+            backgroundColor="#0a0a0a"
+            colors={["#ffffff", "#71717a", "#ffffff"]}
+            glowColor="0 0% 95%"
+          >
+            <form onSubmit={handleTextSubmit} className="flex items-center gap-2 p-1.5">
+              <input
+                value={textValue}
+                onChange={(e) => setTextValue(e.target.value)}
+                placeholder={
+                  question.slot === "budget"
+                    ? "Or enter your own budget numbers (e.g. $750/day, max $3k)..."
+                    : "Or type your own custom answer..."
+                }
+                disabled={disabled}
+                className="font-script h-9 flex-1 border-0 bg-transparent px-2 text-xs sm:text-sm text-white/90 placeholder:text-foreground-muted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <span title={disabled ? "Complete onboarding to start sending messages" : undefined}>
+                <button
+                  type="submit"
+                  disabled={disabled || textValue.trim().length === 0}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </form>
+          </BorderGlow>
         </div>
       ) : (
         <BorderGlow
