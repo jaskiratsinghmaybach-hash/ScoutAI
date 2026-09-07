@@ -85,7 +85,16 @@ export function AgentTrace({
         {labels.map((label, i) => {
           const stepNum = i + 1;
           const step = steps.find((s) => s.step === stepNum);
-          const status = step?.status ?? "pending";
+          let status = step?.status ?? "pending";
+          // Linear progression guarantee: if any subsequent step has reached running or done,
+          // then this earlier step must have completed.
+          if (
+            status !== "error" &&
+            status !== "done" &&
+            steps.some((s) => s.step > stepNum && (s.status === "running" || s.status === "done"))
+          ) {
+            status = "done";
+          }
           const isCurrentStepRunning = status === "running" || (isRetrying && !step && i === steps.length);
 
           return (

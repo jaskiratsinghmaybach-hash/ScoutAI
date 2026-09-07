@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     const searchResults = await runSearches(searchQueries);
 
-    await pushStep(runId, steps, {
+    steps = await pushStep(runId, steps, {
       step: 2,
       action: "Searching for real locations",
       detail: "Retrieved permit data, productions history, and cost signals",

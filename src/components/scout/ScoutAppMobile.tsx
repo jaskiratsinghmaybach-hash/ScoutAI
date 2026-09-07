@@ -298,14 +298,21 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
         )}
 
         <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col items-center text-center">
-          <Image
-            src="/logo.avif"
-            alt="ScoutAI"
-            width={160}
-            height={80}
-            priority
-            className="h-9 w-auto object-contain"
-          />
+          <button
+            type="button"
+            onClick={handleNewChat}
+            aria-label="Go to home"
+            className="opacity-90 hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong rounded"
+          >
+            <Image
+              src="/logo.avif"
+              alt="ScoutAI"
+              width={160}
+              height={80}
+              priority
+              className="h-9 w-auto object-contain"
+            />
+          </button>
           <p className="mt-2 text-sm text-foreground-muted">
             Autonomous location scouting for film &amp; commercial productions.
           </p>

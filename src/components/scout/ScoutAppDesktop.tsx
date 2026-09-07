@@ -307,7 +307,12 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
           )}
 
           <div className="relative z-10 mx-auto flex w-full max-w-xl flex-col items-center text-center">
-            <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleNewChat}
+              aria-label="Go to home"
+              className="flex items-center gap-2 opacity-90 hover:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong rounded"
+            >
               <Image
                 src="/logo.avif"
                 alt="ScoutAI"
@@ -316,7 +321,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                 priority
                 className="h-10 w-auto object-contain"
               />
-            </div>
+            </button>
 
             <p className="mt-2 text-sm text-foreground-muted">
               Autonomous location scouting for film &amp; commercial productions.
@@ -426,6 +431,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
       >
         <AppHeader
           title={title}
+          onLogoClick={handleNewChat}
           actions={
             <>
               <button

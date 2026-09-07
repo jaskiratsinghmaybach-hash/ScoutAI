@@ -100,6 +100,15 @@ export async function pushStep(runId: string, currentSteps: AgentStep[], step: A
   } else {
     newSteps.push(step);
   }
+
+  // Ensure strict linear progression: if step N is running or done,
+  // all prior steps (1 .. N-1) must be marked done so no prior step is ever left running.
+  for (let i = 0; i < newSteps.length; i++) {
+    if (newSteps[i].step < step.step && newSteps[i].status !== "done") {
+      newSteps[i] = { ...newSteps[i], status: "done" };
+    }
+  }
+
   await updateScoutRun(runId, { steps: newSteps, current_step: step.step });
   return newSteps;
 }

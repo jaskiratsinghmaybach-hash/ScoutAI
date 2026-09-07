@@ -257,7 +257,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
 
   const inFlightRun = runs.find((r) => r.id === inFlightRunId) ?? null;
 
-  function openRunCards(runId: string) {
+  const openRunCards = useCallback((runId: string) => {
     setRightPanelRunId(runId);
     setActiveRunId(runId);
     setFocusedRunId(null);
@@ -265,7 +265,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
     // been opened at least once — dropdown/in-chat pill are the way
     // back to it after this point.
     setInFlightRunId((prev) => (prev === runId ? null : prev));
-  }
+  }, []);
 
   function handlePillClick(run: ScoutRun) {
     setActiveRunId(run.id);
@@ -511,10 +511,11 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
                       ...s,
                       status: s.status === "running" ? ("done" as const) : s.status,
                     }));
-                    return { ...r, steps: finishedSteps, packet: data.packet };
+                    return { ...r, steps: finishedSteps, packet: data.packet, status: "done" };
                   }),
                 );
                 setPhase("done");
+                openRunCards(runId);
 
                 // Generate AI title only on the FIRST completed run, and only if not already custom-renamed
                 if (isFirstRun) {
@@ -566,7 +567,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         }
       }
     },
-    [generateChatTitle],
+    [generateChatTitle, openRunCards],
   );
 
   const handleRetryRun = useCallback(
@@ -805,7 +806,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         }
       }
     },
-    [runs, slots],
+    [openRunCards, runs, slots],
   );
 
 
