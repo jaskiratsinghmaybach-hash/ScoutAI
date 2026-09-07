@@ -106,8 +106,7 @@ function buildGenAIClient() {
       // wrap it in a closure that ignores whatever argument
       // google-auth-library passes in and calls getVercelOidcToken() with
       // genuinely zero arguments, every time.
-      getSubjectToken: (supplierContext) =>
-        getVercelOidcToken({ audience: supplierContext.audience }),
+      getSubjectToken: () => getVercelOidcToken(),
     },
   });
 

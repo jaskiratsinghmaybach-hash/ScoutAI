@@ -192,7 +192,12 @@ export function LocationResultCard({
         </motion.div>
       </AnimatePresence>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto md:flex-row md:overflow-visible">
+      {/* Mobile Stats Summary: Shown above tabs on phone screens (< md) */}
+      <div className="block shrink-0 md:hidden">
+        <LocationStats location={location} />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto md:flex-row md:gap-5 md:overflow-visible">
         {/* Main pane: tabs + content */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <div
@@ -222,7 +227,7 @@ export function LocationResultCard({
             })}
           </div>
 
-          <div className="scrollbar-thin min-h-[60vh] flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4 md:min-h-[16rem]">
+          <div className="scrollbar-thin min-h-[14rem] flex-1 overflow-y-auto rounded-lg border border-border bg-surface p-4 md:min-h-[16rem]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${location.id}-${activeTab}`}
@@ -238,11 +243,8 @@ export function LocationResultCard({
           </div>
         </div>
 
-        {/* Right-side stats column on desktop; stacks below the tabs
-            on mobile instead of squeezing into a narrow side rail
-            (that's what was crowding/overlapping the Scout's Score,
-            Mood Fit, etc. pills against the tab content on phones). */}
-        <div className="scrollbar-thin w-full shrink-0 overflow-visible md:w-40 md:overflow-y-auto lg:w-48">
+        {/* Right-side stats column on desktop (>= md) */}
+        <div className="hidden scrollbar-thin shrink-0 overflow-visible md:block md:w-40 md:overflow-y-auto lg:w-48">
           <LocationStats location={location} />
         </div>
       </div>

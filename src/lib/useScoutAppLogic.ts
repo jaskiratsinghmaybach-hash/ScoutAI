@@ -412,6 +412,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
 
       const initialRun: ScoutRun = {
         id: runId,
+        status: "running",
         steps: [
           {
             step: 1,
@@ -472,6 +473,10 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
           throw new Error(startError || "Scout run did not return a run id");
         }
 
+        setRuns((prev) =>
+          prev.map((r) => (r.id === runId ? { ...r, serverRunId: scoutRunId } : r)),
+        );
+
         await new Promise<void>((resolve, reject) => {
           let consecutiveFailures = 0;
           const poll = async () => {
@@ -496,7 +501,16 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
               consecutiveFailures = 0;
 
               setRuns((prev) =>
-                prev.map((r) => (r.id === runId ? { ...r, steps: data.steps } : r)),
+                prev.map((r) =>
+                  r.id === runId
+                    ? {
+                        ...r,
+                        steps: data.steps,
+                        status: data.status,
+                        error: data.error,
+                      }
+                    : r,
+                ),
               );
 
               if (data.status === "done") {
@@ -527,6 +541,17 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
                   clearInterval(pollTimerRef.current);
                   pollTimerRef.current = null;
                 }
+                setRuns((prev) =>
+                  prev.map((r) =>
+                    r.id === runId
+                      ? {
+                          ...r,
+                          status: "error",
+                          error: data.error || "Scout pipeline failed",
+                        }
+                      : r,
+                  ),
+                );
                 setError(data.error || "Scout pipeline failed");
                 setPhase("clarifying");
                 resolve();
@@ -554,10 +579,33 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") {
           setPhase("stopped");
+          setRuns((prev) =>
+            prev.map((r) =>
+              r.id === runId
+                ? {
+                    ...r,
+                    status: "error",
+                    error: "Run paused",
+                  }
+                : r,
+            ),
+          );
           return;
         }
         console.error(err);
-        setError(err instanceof Error ? err.message : "Scout pipeline failed");
+        const errMsg = err instanceof Error ? err.message : "Scout pipeline failed";
+        setRuns((prev) =>
+          prev.map((r) =>
+            r.id === runId
+              ? {
+                  ...r,
+                  status: "error",
+                  error: errMsg,
+                }
+              : r,
+          ),
+        );
+        setError(errMsg);
         setPhase("clarifying");
       } finally {
         abortControllerRef.current = null;
@@ -1400,12 +1448,15 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
       pollTimerRef.current = null;
     }
     setPhase("stopped");
-    // Note: this only stops the CLIENT from polling further — the
-    // server-side pipeline (whichever stage is currently running) is
-    // fire-and-forget and will keep running to completion in the
-    // background, same as it would if you closed the browser tab
-    // during the old SSE version. Its result is simply never picked
-    // back up client-side once stopped.
+    if (inFlightRunId) {
+      setRuns((prev) =>
+        prev.map((r) =>
+          r.id === inFlightRunId
+            ? { ...r, status: "error", error: "Run paused" }
+            : r,
+        ),
+      );
+    }
   }
 
   function handleNewChat() {

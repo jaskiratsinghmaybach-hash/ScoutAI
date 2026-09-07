@@ -24,33 +24,35 @@ export function LocationStats({ location }: { location: Location }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className="flex w-full flex-col gap-3"
+      className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:w-full md:flex-col md:gap-3"
     >
-      <div className="rounded-lg border border-border bg-surface px-4 py-3">
-        <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+      <div className="rounded-lg border border-border bg-surface px-3 py-2.5 md:px-4 md:py-3">
+        <div className="text-[10px] font-medium uppercase tracking-wide text-foreground-muted md:text-xs">
           Scout&apos;s Score
         </div>
-        <div className="mt-1 text-2xl font-semibold text-foreground">
+        <div className="mt-0.5 text-xl font-semibold text-foreground md:mt-1 md:text-2xl">
           {location.score}
-          <span className="text-sm font-normal text-foreground-muted">/100</span>
+          <span className="text-xs font-normal text-foreground-muted md:text-sm">/100</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3">
-        <PercentRing percent={mood} />
-        <span className="text-sm text-foreground">Mood Fit</span>
+      <div className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 md:gap-3 md:px-4 md:py-3">
+        <PercentRing percent={mood} size={32} className="md:hidden" />
+        <PercentRing percent={mood} size={44} className="hidden md:block" />
+        <span className="text-xs text-foreground md:text-sm">Mood Fit</span>
       </div>
 
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3">
-        <PercentRing percent={era} />
-        <span className="text-sm text-foreground">Era match</span>
+      <div className="flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 md:gap-3 md:px-4 md:py-3">
+        <PercentRing percent={era} size={32} className="md:hidden" />
+        <PercentRing percent={era} size={44} className="hidden md:block" />
+        <span className="text-xs text-foreground md:text-sm">Era match</span>
       </div>
 
-      <div className="rounded-lg border border-border bg-surface px-4 py-3">
-        <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
+      <div className="rounded-lg border border-border bg-surface px-3 py-2.5 md:px-4 md:py-3">
+        <div className="text-[10px] font-medium uppercase tracking-wide text-foreground-muted md:text-xs">
           Est daily cost
         </div>
-        <div className="mt-1 text-sm text-foreground">
+        <div className="mt-0.5 truncate text-xs text-foreground md:mt-1 md:text-sm">
           {location.avg_daily_cost || "Not available yet"}
         </div>
       </div>

@@ -23,18 +23,51 @@ create table if not exists public.scout_runs (
   updated_at timestamptz not null default now()
 );
 
--- Rows are short-lived (a run finishes in well under a minute of total
--- pipeline time) and keyed by an unguessable uuid, so this stays open
--- for read/write via the anon key without per-user auth — same trust
--- model as an ephemeral job id. Tighten this if you want per-user
--- ownership later (e.g. add user_id + RLS matching auth.uid()).
+-- Enable Row Level Security
 alter table public.scout_runs enable row level security;
 
-create policy "anyone can read/write scout_runs by id"
+-- Drop legacy permissive policy if present
+drop policy if exists "anyone can read/write scout_runs by id" on public.scout_runs;
+drop policy if exists "allow insert of scout runs" on public.scout_runs;
+drop policy if exists "allow select of scout runs" on public.scout_runs;
+drop policy if exists "allow update of scout runs" on public.scout_runs;
+
+-- SECURITY MODEL:
+-- ScoutAI operates on an ephemeral, unauthenticated job architecture.
+-- Pipeline runs are created with unguessable, cryptographically random
+-- 128-bit UUIDs (gen_random_uuid()) and executed across staged serverless
+-- handlers and client polling using the public anon key.
+--
+-- Limitation: Because runs are intentionally unauthenticated (no user login
+-- required), per-user database ownership (e.g. auth.uid() = user_id) cannot
+-- be enforced at the SQL layer without introducing mandatory authentication.
+-- The unguessable run UUID functions as an ephemeral capability token.
+--
+-- Tighter granular policies:
+-- 1. INSERT: Allow creating new runs with valid initial state.
+-- 2. SELECT: Allow reading run status/packet for polling and stage execution.
+-- 3. UPDATE: Allow stage transitions and step updates.
+-- 4. DELETE: Disallowed entirely (no policy granted) to prevent deletion of active runs.
+
+create policy "allow insert of scout runs"
   on public.scout_runs
-  for all
+  for insert
+  with check (
+    status in ('running', 'done', 'error')
+  );
+
+create policy "allow select of scout runs"
+  on public.scout_runs
+  for select
+  using (true);
+
+create policy "allow update of scout runs"
+  on public.scout_runs
+  for update
   using (true)
-  with check (true);
+  with check (
+    status in ('running', 'done', 'error')
+  );
 
 -- Keep updated_at fresh on every write so the client can distinguish
 -- "still running" from "stalled" if a step ever fails to fire the next one.

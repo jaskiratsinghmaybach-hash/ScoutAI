@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 /**
  * Small circular progress ring. `percent === null` renders a dashed,
@@ -11,10 +12,12 @@ export function PercentRing({
   percent,
   size = 44,
   strokeWidth = 4,
+  className,
 }: {
   percent: number | null;
   size?: number;
   strokeWidth?: number;
+  className?: string;
 }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -22,7 +25,7 @@ export function PercentRing({
     percent === null ? 0 : circumference - (percent / 100) * circumference;
 
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle
           cx={size / 2}
