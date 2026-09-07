@@ -13,7 +13,7 @@ export function AccessTab({ location }: { location: Location }) {
         <div className="mb-2 flex items-center gap-2">
           <ShieldAlert className="h-4 w-4 text-foreground-muted" />
           <span className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
-            Permit requirements
+            Permit & access research
           </span>
         </div>
         {hasPermitInfo ? (
@@ -36,6 +36,9 @@ export function AccessTab({ location }: { location: Location }) {
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         )}
+        <p className="mt-3 border-t border-border/50 pt-2.5 text-[11px] leading-relaxed text-foreground-muted/70">
+          Permit and access information is researched from available public sources and does not guarantee official filming clearance. Always confirm requirements with local authorities.
+        </p>
       </div>
     </div>
   );

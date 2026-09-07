@@ -40,7 +40,7 @@ export function LocationCard({ location, rank }: { location: Location; rank: num
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-foreground-muted">
-              Permit
+              Permit research
             </div>
             <p className="mt-1 text-sm leading-relaxed">{location.permit_info}</p>
             {location.permit_url && (

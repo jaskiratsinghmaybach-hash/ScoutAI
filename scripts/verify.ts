@@ -102,7 +102,7 @@ function assert(condition: boolean, message: string) {
   path = getActivePath(tree);
   assert(
     path[0].content === "hello" &&
-      path.some((n) => n.content === "Hey there! I'm Scout..."),
+    path.some((n) => n.content === "Hey there! I'm Scout..."),
     "switching back to the original restores it AND its downstream reply",
   );
 })();

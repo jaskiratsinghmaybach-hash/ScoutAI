@@ -894,7 +894,7 @@ export function useScoutAppLogic({ chatId }: { chatId?: string }) {
         abortControllerRef.current = null;
       }
     },
-    [dispatchScout, setThinkingPhase],
+    [dispatchScout, effectiveDisplayName, setThinkingPhase],
   );
 
   // Sidebar defaults: open on the landing page, closed once any chat

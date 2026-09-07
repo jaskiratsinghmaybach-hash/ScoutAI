@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ArrowUp } from "lucide-react";
 import BorderGlow from "@/components/scout/BorderGlow";
 import type { ClarifyQuestion } from "@/types";
@@ -19,10 +19,13 @@ export function QuestionCard({
   disabled?: boolean;
 }) {
   const [textValue, setTextValue] = useState(prefill ?? "");
-
-  useEffect(() => {
-    if (prefill !== undefined) setTextValue(prefill);
-  }, [prefill]);
+  const [prevPrefill, setPrevPrefill] = useState(prefill);
+  if (prefill !== prevPrefill) {
+    setPrevPrefill(prefill);
+    if (prefill !== undefined) {
+      setTextValue(prefill);
+    }
+  }
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();

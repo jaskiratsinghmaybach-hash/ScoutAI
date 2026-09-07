@@ -37,6 +37,16 @@ interface ChatsListProps {
     onDeleteConfirmedOnCurrentChat?: (deletedChatId: string) => void;
 }
 
+async function renameAccountChat(userId: string, chatId: string, title: string) {
+    const state = await fetchAccountChatState(userId, chatId);
+    if (state) {
+        const updatedState = { ...state, title, titleIsCustom: true, lastUpdated: Date.now() };
+        await upsertChat(chatId, updatedState);
+        return true;
+    }
+    return false;
+}
+
 export function ChatsList({
     onClose,
     activeView,
@@ -124,10 +134,8 @@ export function ChatsList({
                 return;
             }
             try {
-                const state = await fetchAccountChatState(user.id, chatId);
-                if (state) {
-                    const updatedState = { ...state, title: trimmed, titleIsCustom: true, lastUpdated: Date.now() };
-                    await upsertChat(chatId, updatedState);
+                const updated = await renameAccountChat(user.id, chatId, trimmed);
+                if (updated) {
                     await onRefreshAccountChats();
                 }
                 setRenamingId(null);
@@ -237,7 +245,7 @@ export function ChatsList({
             {activeView === "account" && !user ? (
                 <div className="rounded-xl border border-border bg-neutral-900/60 p-5 space-y-3">
                     <p className="text-sm text-neutral-300 leading-relaxed">
-                        You're signed out. Sign in again to access your account chats, or switch to Local.
+                        You&apos;re signed out. Sign in again to access your account chats, or switch to Local.
                     </p>
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button

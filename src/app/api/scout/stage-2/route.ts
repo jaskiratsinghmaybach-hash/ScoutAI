@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let steps = await pushStep(runId, run.steps, {
+    const steps = await pushStep(runId, run.steps, {
       step: 2,
       action: "Searching for real locations",
       detail: `Running ${run.search_queries.length} searches via Parallel...`,
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     const searchResults = await runSearches(run.search_queries);
 
-    steps = await pushStep(runId, steps, {
+    await pushStep(runId, steps, {
       step: 2,
       action: "Searching for real locations",
       detail: "Retrieved permit data, productions history, and cost signals",

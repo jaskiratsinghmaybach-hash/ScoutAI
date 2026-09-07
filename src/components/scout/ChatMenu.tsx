@@ -16,8 +16,6 @@ export interface ChatMenuProps {
 
 export function ChatMenu({
     chatId,
-    currentTitle,
-    onRenamed,
     onDeleted,
     onShare,
     onInfo,

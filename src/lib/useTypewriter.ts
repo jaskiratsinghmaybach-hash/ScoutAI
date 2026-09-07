@@ -8,6 +8,7 @@ export function useTypewriter(phrases: string[], options?: { typeSpeed?: number;
     const [isFrozen, setIsFrozen] = useState(false);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const liveTextRef = useRef("");
+    const finishRequestedRef = useRef(false);
 
     useEffect(() => {
         if (isFrozen || phrases.length === 0) return;
@@ -73,8 +74,6 @@ export function useTypewriter(phrases: string[], options?: { typeSpeed?: number;
             if (timeoutRef.current) clearTimeout(timeoutRef.current);
         };
     }, [isFrozen, phrases, typeSpeed, dwellMs]);
-
-    const finishRequestedRef = useRef(false);
 
     function freeze(withText?: string) {
         if (withText !== undefined) {

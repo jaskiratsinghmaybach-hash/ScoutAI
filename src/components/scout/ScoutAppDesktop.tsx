@@ -31,7 +31,6 @@ import type { ConversationTurn } from "@/types";
 // between the two.
 export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
   const {
-    router,
     chatId,
     user,
     syncStatus,
@@ -42,7 +41,6 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
     profile,
     refreshProfile,
     isGlowing,
-    isDropdownOpen,
     setIsDropdownOpen,
     signInWithGoogle,
     signOut,
@@ -53,7 +51,6 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
     effectiveDisplayName,
     canSend,
     phase,
-    setPhase,
     thinkingMessage,
     introText,
     setIntroText,
@@ -64,11 +61,8 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
     activePathNodes,
     history,
     slots,
-    setSlots,
     title,
-    setTitle,
     currentQuestion,
-    setCurrentQuestion,
     showChatsList,
     setShowChatsList,
     showContinuityModal,

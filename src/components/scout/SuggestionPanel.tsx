@@ -7,7 +7,10 @@ export function SuggestionPanel({ onSelect }: { onSelect: (text: string) => void
     const [suggestions, setSuggestions] = useState<string[]>([]);
 
     useEffect(() => {
-        setSuggestions(getRandomSuggestions(3));
+        const timer = window.setTimeout(() => {
+            setSuggestions(getRandomSuggestions(3));
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, []);
 
     return (

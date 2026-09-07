@@ -84,6 +84,13 @@ export function ContinuityModal({
 
     // Profile inline edit state
     const [nameInput, setNameInput] = useState(profile?.display_name ?? "");
+    const [prevProfileDisplayName, setPrevProfileDisplayName] = useState(profile?.display_name);
+    if (profile?.display_name !== prevProfileDisplayName) {
+        setPrevProfileDisplayName(profile?.display_name);
+        if (profile?.display_name !== undefined) {
+            setNameInput(profile.display_name ?? "");
+        }
+    }
     const [isEditingName, setIsEditingName] = useState(false);
     const [isSavingName, setIsSavingName] = useState(false);
     const [profileFeedback, setProfileFeedback] = useState<{ text: string; error?: boolean } | null>(null);
@@ -97,13 +104,6 @@ export function ContinuityModal({
         candidates: { chatId: string; title: string }[];
     } | null>(null);
     const [selectedForDeletion, setSelectedForDeletion] = useState<Set<string>>(new Set());
-
-    // Sync local profile name state when profile updates
-    useEffect(() => {
-        if (profile?.display_name !== undefined && nameInput !== profile.display_name) {
-            setNameInput(profile.display_name ?? "");
-        }
-    }, [profile?.display_name, nameInput]);
 
     // Close on Escape
     useEffect(() => {

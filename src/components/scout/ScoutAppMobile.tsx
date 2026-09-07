@@ -119,7 +119,7 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
   // Which of the two main screens is showing. Only meaningful once a
   // chat has actually started — the landing/intro screen (below)
   // doesn't have a Scout side yet, since there's no run to show.
-  const [tab, setTab] = useState<MobileTab>("chat");
+  const [tab, setTab] = useState<MobileTab>(() => (chatId && !hasOnboarded ? "scout" : "chat"));
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
 
   // On mobile, the shared hook initialises showChatsList to true when
@@ -181,12 +181,13 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
   // as we're on a real chat route (chatId present, so we're past the
   // landing page) and onboarding isn't done, force the Scout tab open
   // so OnboardingFlow is what the user actually sees.
-  useEffect(() => {
+  const [prevRouteState, setPrevRouteState] = useState({ chatId, hasOnboarded });
+  if (prevRouteState.chatId !== chatId || prevRouteState.hasOnboarded !== hasOnboarded) {
+    setPrevRouteState({ chatId, hasOnboarded });
     if (chatId && !hasOnboarded) {
       setTab("scout");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, hasOnboarded]);
+  }
 
   // Once onboarding completes, hop back to the chat tab: the pending
   // draft (if any) is already sitting in the composer per

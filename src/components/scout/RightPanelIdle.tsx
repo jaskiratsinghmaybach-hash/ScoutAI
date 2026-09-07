@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import type { User } from "@supabase/supabase-js";
 import { RefreshCw, History, Sparkles, ArrowRight, ArrowUpRight } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { listAllChats, type ChatSummary } from "@/lib/chatStorage";
 import { SCENE_SUGGESTIONS } from "@/data/suggestions";
 import type { SyncStatus } from "@/lib/useAuth";
@@ -32,7 +31,6 @@ function pickThree(): string[] {
 
 export function RightPanelIdle({
   user,
-  syncStatus,
   onOpenContinuity,
   onQuickStart,
   displayName,

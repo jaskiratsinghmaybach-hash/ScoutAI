@@ -48,7 +48,7 @@ const script = localFont({
 export const metadata: Metadata = {
   title: "ScoutAI — AI Location Scouting",
   description:
-    "Describe your scene. Get real, permit-checked filming locations researched by an AI agent, powered by Gemini and Parallel Search.",
+    "Describe your scene. Get real filming locations — with permit and access info researched from available sources — found by an AI agent powered by Gemini and Parallel Search.",
 };
 
 // Without this, phones render the page at a virtual desktop-like width

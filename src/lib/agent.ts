@@ -25,7 +25,7 @@ import type { SceneQuery, ScoutingPacket, Location, AgentStep } from "@/types";
 // local dev automatically stays on the ADC path with zero config.
 //
 // location "global" — not a regional endpoint like "us-central1" —
-// because gemini-3.6-flash (and 3.7-flash) are served through
+// because gemini-3.8-flash (and 3.7-flash) are served through
 // Vertex AI's global endpoint. Only gemini-3.5-flash/-flash-lite
 // currently also support the regional "us"/"eu" multi-regions.
 function buildGenAIClient() {
@@ -163,11 +163,11 @@ function getGenAI(): GoogleGenAI {
   return _genAI;
 }
 
-const MODEL = "gemini-3.6-flash";
+const MODEL = "gemini-3.8-flash";
 
 // How long a single Gemini call is allowed to run before it's treated
 // as a failure worth retrying/giving up on, rather than left to hang
-// with no ceiling at all. gemini-3.6-flash has "thinking" on by
+// with no ceiling at all. gemini-3.8-flash has "thinking" on by
 // default, which can push response time noticeably higher than older
 // flash models — 35s leaves real headroom below that. This is the
 // FIRST attempt's timeout only; see generateWithRetry for how the
