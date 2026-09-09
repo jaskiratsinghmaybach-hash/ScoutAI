@@ -11,7 +11,6 @@ import { ActivityPill } from "@/components/scout/ActivityPill";
 import { ResultsPanel } from "@/components/scout/ResultsPanel";
 import { AttachedCardChip } from "@/components/scout/AttachedCardChip";
 import { BroadSuggestions } from "@/components/scout/BroadSuggestions";
-import { LatestRunIndicator } from "@/components/scout/LatestRunIndicator";
 import { UserMessage } from "@/components/scout/UserMessage";
 import { AssistantMessage } from "@/components/scout/AssistantMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
@@ -197,9 +196,6 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
     completeOnboarding(name);
     setTab("chat");
   };
-
-  const latestRun = runs[runs.length - 1];
-  const showLatestIndicator = Boolean(latestRun) && latestRun.id !== activeRunId;
 
   // ---------- CHATS LIST: full-screen slide-over ----------
   // Rendered on top of everything else, same component desktop uses.
@@ -647,17 +643,6 @@ export function ScoutAppMobile(props: ReturnType<typeof useScoutAppLogic>) {
           {/* ---- Composer: same phase-driven branches as desktop,
               condensed for a single-column, safe-area-aware bar. ---- */}
           <div className="shrink-0 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
-            {showLatestIndicator && phase !== "done" && (
-              <LatestRunIndicator
-                latestRun={latestRun}
-                isViewingLatest={false}
-                onJumpToLatest={() => {
-                  setActiveRunId(latestRun.id);
-                  setTab("scout");
-                }}
-              />
-            )}
-
             {!canSend && (phase === "clarifying" || phase === "intro") && (
               <div className="px-4 pb-1 pt-2 text-center text-xs text-foreground-muted">
                 Tap the account icon to finish quick setup before chatting.

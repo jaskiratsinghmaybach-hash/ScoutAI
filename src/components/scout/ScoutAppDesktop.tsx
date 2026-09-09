@@ -11,7 +11,6 @@ import { ActivityPill } from "@/components/scout/ActivityPill";
 import { ResultsPanel } from "@/components/scout/ResultsPanel";
 import { AttachedCardChip } from "@/components/scout/AttachedCardChip";
 import { BroadSuggestions } from "@/components/scout/BroadSuggestions";
-import { LatestRunIndicator } from "@/components/scout/LatestRunIndicator";
 import { UserMessage } from "@/components/scout/UserMessage";
 import { AssistantMessage } from "@/components/scout/AssistantMessage";
 import { ChatsList } from "@/components/scout/ChatsList";
@@ -412,8 +411,9 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
   // drives the LatestRunIndicator, and must live directly above whichever
   // input box is actually rendered, never as a floating sibling.
   const latestRun = runs[runs.length - 1];
-  const showLatestIndicator =
-    Boolean(latestRun) && latestRun.id !== activeRunId;
+  // "See latest Scout" button removed — onJumpToLatest didn't actually
+  // navigate to the latest run (setActiveRunId wasn't wired to the panel
+  // state that drives what's shown). Revisit if this comes back.
 
   // ---------- CONVERSATION VIEW ----------
   return (
@@ -823,8 +823,7 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                   </motion.div>
                 </div>
 
-                {/* ---- Input area: exactly one block renders at a time, and the
-              LatestRunIndicator (if needed) always sits directly above it. ---- */}
+                {/* ---- Input area: exactly one block renders at a time. ---- */}
 
                 {/* Fresh chat input bar when history is empty */}
                 {history.length === 0 &&
@@ -885,13 +884,6 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
                     phase === "thinking" ||
                     phase === "running") && (
                     <div className="shrink-0">
-                      {showLatestIndicator && (
-                        <LatestRunIndicator
-                          latestRun={latestRun}
-                          isViewingLatest={false}
-                          onJumpToLatest={() => setActiveRunId(latestRun.id)}
-                        />
-                      )}
                       {!canSend && phase === "clarifying" && (
                         <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
                           Finish the quick setup on the right to start chatting with ScoutAI.
@@ -1001,13 +993,6 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
 
                 {phase === "stopped" && (
                   <div className="shrink-0">
-                    {showLatestIndicator && (
-                      <LatestRunIndicator
-                        latestRun={latestRun}
-                        isViewingLatest={false}
-                        onJumpToLatest={() => setActiveRunId(latestRun.id)}
-                      />
-                    )}
                     {!canSend && (
                       <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
                         Finish the quick setup on the right to start chatting with ScoutAI.
@@ -1094,13 +1079,6 @@ export function ScoutAppDesktop(props: ReturnType<typeof useScoutAppLogic>) {
 
                 {phase === "done" && latestRun?.packet && (
                   <div className="shrink-0">
-                    {showLatestIndicator && (
-                      <LatestRunIndicator
-                        latestRun={latestRun}
-                        isViewingLatest={false}
-                        onJumpToLatest={() => setActiveRunId(latestRun.id)}
-                      />
-                    )}
                     {!canSend && (
                       <div className="px-6 pb-2 text-center text-xs text-foreground-muted">
                         Finish the quick setup on the right to start chatting with ScoutAI.
